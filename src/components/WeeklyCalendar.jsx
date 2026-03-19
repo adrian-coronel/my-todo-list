@@ -98,7 +98,7 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
 
   const dayDiff = weekDays.findIndex(d => format(d, 'yyyy-MM-dd') === entry.date);
   if (dayDiff === -1) return null;
-  if (entry.isAllDay) return null; // las tareas del día se renderizan en la fila all-day
+  if (entry.isAllDay || !entry.startTime || !entry.endTime) return null;
 
   const y0     = timeToY(entry.startTime, pxPerHour);
   const y1     = timeToY(entry.endTime,   pxPerHour);
