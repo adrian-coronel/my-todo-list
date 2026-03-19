@@ -4,6 +4,7 @@ import AppHeader from './components/AppHeader'
 import Sidebar from './components/Sidebar'
 import WeeklyCalendar from './components/WeeklyCalendar'
 import AuthScreen from './components/AuthScreen'
+import PwaUpdatePrompt from './components/PwaUpdatePrompt'
 import './index.css'
 
 function AppContent() {
@@ -30,6 +31,7 @@ function AppContent() {
           </main>
         </div>
       </div>
+      <PwaUpdatePrompt />
     </AppProvider>
   )
 }
