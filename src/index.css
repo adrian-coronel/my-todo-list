@@ -472,10 +472,11 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .time-column {
   width: 56px;
   flex-shrink: 0;
-  position: relative;
+  position: sticky;
+  left: 0;
   border-right: 1px solid var(--border-subtle);
   background: var(--bg-primary);
-  z-index: 20;
+  z-index: 50;
 }
 .time-label {
   position: absolute;
@@ -489,8 +490,8 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .calendar-grid {
   flex: 1;
   position: relative;
+  min-width: 680px; /* Force minimum width to enable horizontal scroll on small devices */
   display: flex;
-  min-width: 0;
 }
 
 .day-column {
@@ -771,10 +772,9 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
   
   /* Calendario scrolleable en móvil */
   .calendar-scroll { overflow-x: auto; }
-  .calendar-grid { min-width: 680px; } /* asegura scroll horizontal fluido en móvil para la vista de 7 días */
   
   /* Cabecera del calendario flex-wrap en caso de no caber */
-  .main-canvas > div:first-child { flex-wrap: wrap; padding: 10px !important; }
+  .calendar-nav { flex-wrap: wrap; justify-content: center; gap: 12px; }
   .view-switcher-btn { padding: 4px 8px !important; font-size: 11px !important; }
 }
 

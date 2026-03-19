@@ -443,7 +443,7 @@ const WeeklyCalendar = () => {
         <div className="flex-row gap-2">
           <button className="btn btn-ghost btn-icon" onClick={() => navigate(-1)}><ChevronLeft size={18}/></button>
           <button className="btn btn-ghost btn-icon" onClick={() => navigate(1)}><ChevronRight size={18}/></button>
-          <span style={{ fontWeight:600, fontSize:15, textTransform:'capitalize' }}>{navLabel}</span>
+          <span style={{ fontWeight:600, fontSize:15, textTransform:'capitalize', whiteSpace:'nowrap' }}>{navLabel}</span>
         </div>
         <div className="flex-row gap-2">
           <div className="view-switcher">
