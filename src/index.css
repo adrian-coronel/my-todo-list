@@ -531,11 +531,15 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 }
 .day-num.today-dot {
   width: 32px; height: 32px;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   background: var(--accent-blue);
-  color: #fff;
-  display: flex; align-items: center; justify-content: center;
+  color: #fff !important;
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
   margin: 0 auto;
+  flex: 0 0 auto; /* Asegurar que no se estire ni se contraiga */
 }
 .day-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; }
 
