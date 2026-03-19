@@ -14,8 +14,10 @@ import ContextMenu from './ContextMenu';
 const DEFAULT_PPH = 64;   // px por hora por defecto
 const MIN_PPH     = 32;   // zoom mínimo
 const MAX_PPH     = 384;  // zoom máximo
-const MINUTE_SNAP = 15;
-const HEADER_H    = 56;
+const MINUTE_SNAP  = 15;
+const DAY_LABEL_H  = 56;
+const ALL_DAY_H    = 32;
+const HEADER_H     = DAY_LABEL_H + ALL_DAY_H; // 88px total
 
 /* ── Utilitarios ──────────────────────────────────────────────────────────── */
 const timeToY = (t, pxh) => {
@@ -96,6 +98,7 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
 
   const dayDiff = weekDays.findIndex(d => format(d, 'yyyy-MM-dd') === entry.date);
   if (dayDiff === -1) return null;
+  if (entry.isAllDay) return null; // las tareas del día se renderizan en la fila all-day
 
   const y0     = timeToY(entry.startTime, pxPerHour);
   const y1     = timeToY(entry.endTime,   pxPerHour);
@@ -305,12 +308,15 @@ const MonthView = ({ currentDate, entries, tasks, onDayClick }) => {
 /* ════════════════════════════════════════════════════════════════════════════
    Vista Diaria
 ════════════════════════════════════════════════════════════════════════════ */
-const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpenEdit }) => {
+const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpenEdit, onOpenAllDay }) => {
   const scrollRef = useRef(null);
   const [nowY, setNowY] = useState(0);
-  const dateStr    = format(currentDate, 'yyyy-MM-dd');
-  const todayStr   = format(new Date(), 'yyyy-MM-dd');
-  const dayEntries = entries.filter(e => e.date === dateStr);
+  const { getEntryColor } = useApp();
+  const dateStr      = format(currentDate, 'yyyy-MM-dd');
+  const todayStr     = format(new Date(), 'yyyy-MM-dd');
+  const allEntries   = entries.filter(e => e.date === dateStr);
+  const dayEntries   = allEntries.filter(e => !e.isAllDay);
+  const allDayEntries = allEntries.filter(e => e.isAllDay);
   const singleWeek = [currentDate];
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 8 * pxPerHour - 40; }, [dateStr]);
@@ -322,17 +328,46 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
   return (
     <div className="calendar-scroll" ref={scrollRef}>
       <div className="time-column">
-        <div style={{ height:HEADER_H, borderBottom:'1px solid var(--border-subtle)', position:'sticky', top:0, background:'var(--bg-primary)', zIndex:25 }}/>
+        <div style={{ position:'sticky', top:0, background:'var(--bg-primary)', zIndex:25 }}>
+          <div style={{ height:DAY_LABEL_H, borderBottom:'1px solid var(--border-subtle)' }}/>
+          <div style={{ height:ALL_DAY_H, display:'flex', alignItems:'center', justifyContent:'flex-end', padding:'0 6px', borderBottom:'1px solid var(--border-subtle)' }}>
+            <span style={{ fontSize:9, color:'var(--text-tertiary)', fontWeight:600, letterSpacing:'0.05em' }}>DÍA</span>
+          </div>
+        </div>
         <div style={{ position:'relative', height:24*pxPerHour }}>
           <HourLines pxh={pxPerHour}/>
         </div>
       </div>
       <div style={{ flex:1, position:'relative' }}>
+        {/* Etiqueta del día */}
         <div className={`day-header${dateStr===todayStr?' today':''}`}
-          style={{ display:'flex', alignItems:'center', gap:10, padding:'0 16px', justifyContent:'flex-start', textAlign:'left' }}>
+          style={{ height:DAY_LABEL_H, display:'flex', alignItems:'center', gap:10, padding:'0 16px', justifyContent:'flex-start', textAlign:'left', borderBottom:'1px solid var(--border-subtle)' }}>
           <span className="day-label">{format(currentDate,'EEEE',{locale:es}).toUpperCase()}</span>
           <span style={{ fontSize:22, fontWeight:700 }}>{format(currentDate,'d')}</span>
           <span className="day-label">{format(currentDate,'MMMM yyyy',{locale:es})}</span>
+        </div>
+        {/* Fila all-day */}
+        <div style={{ height:ALL_DAY_H, display:'flex', alignItems:'center', gap:4, padding:'0 8px',
+          borderBottom:'1px solid var(--border-subtle)', cursor:'pointer', overflow:'hidden', flexWrap:'nowrap' }}
+          onClick={() => onOpenAllDay && onOpenAllDay(dateStr)}>
+          {allDayEntries.map(e => {
+            const t = tasks.find(x => x.id === e.taskId);
+            const col = getEntryColor(e);
+            return (
+              <div key={e.id}
+                onClick={ev => { ev.stopPropagation(); onOpenEdit && onOpenEdit(e); }}
+                title={t?.title || 'Tarea del día'}
+                style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:col,
+                  color: luminance(col) > 0.45 ? '#111' : '#fff',
+                  whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                  cursor:'pointer', fontWeight:500, flexShrink:0 }}>
+                {t?.title || 'Tarea del día'}
+              </div>
+            );
+          })}
+          {allDayEntries.length === 0 && (
+            <span style={{ fontSize:11, color:'var(--text-tertiary)', opacity:0.4 }}>+ Tarea del día</span>
+          )}
         </div>
         <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, pointerEvents:'none' }}>
           {Array.from({length:24}).map((_,h)=>(
@@ -361,7 +396,7 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
    Calendario Principal
 ════════════════════════════════════════════════════════════════════════════ */
 const WeeklyCalendar = () => {
-  const { entries, addEntry, tasks } = useApp();
+  const { entries, addEntry, tasks, getEntryColor } = useApp();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView]               = useState('week');
   const [summaryDate, setSummaryDate] = useState(null);
@@ -495,6 +530,26 @@ const WeeklyCalendar = () => {
     }
   };
 
+  // Drop desde sidebar en zona all-day
+  const handleDropAllDay = (e, dateStr) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const raw = e.dataTransfer.getData('application/json');
+    if (!raw) return;
+    const payload = JSON.parse(raw);
+    if (payload.type === 'task') {
+      const task = tasks.find(t => t.id === payload.taskId);
+      if (!task) return;
+      addEntry({ taskId:task.id, clientId:task.clientId, projectId:task.projectId, date:dateStr, isAllDay:true, notes:'' });
+    } else if (payload.type === 'subtask') {
+      const task = tasks.find(t => t.id === payload.taskId);
+      if (!task) return;
+      const st = task.subtasks?.find(s => s.id === payload.subtaskId);
+      if (!st) return;
+      addEntry({ taskId:task.id, subtaskId:st.id, subtaskTitle:st.title, clientId:task.clientId, projectId:task.projectId, date:dateStr, isAllDay:true, notes:'', isSubtask:true });
+    }
+  };
+
   // Click en celda → nueva entrada
   const handleCellClick = (e, dateStr, dayEl) => {
     if (e.target.closest('.event-block-inner') || e.target.closest('.resize-handle-top') || e.target.closest('.resize-handle-bottom')) return;
@@ -516,6 +571,8 @@ const WeeklyCalendar = () => {
   const weekEntries = view === 'week'
     ? entries.filter(e => e.date >= format(startDate,'yyyy-MM-dd') && e.date <= format(endDate,'yyyy-MM-dd'))
     : [];
+  const weekTimedEntries  = weekEntries.filter(e => !e.isAllDay);
+  const weekAllDayEntries = weekEntries.filter(e => e.isAllDay);
 
   return (
     <div
@@ -563,7 +620,12 @@ const WeeklyCalendar = () => {
 
           {/* Columna de horas */}
           <div className="time-column">
-            <div style={{ height:HEADER_H, borderBottom:'1px solid var(--border-subtle)', position:'sticky', top:0, background:'var(--bg-primary)', zIndex:25 }}/>
+            <div style={{ position:'sticky', top:0, background:'var(--bg-primary)', zIndex:25 }}>
+              <div style={{ height:DAY_LABEL_H, borderBottom:'1px solid var(--border-subtle)' }}/>
+              <div style={{ height:ALL_DAY_H, display:'flex', alignItems:'center', justifyContent:'flex-end', padding:'0 6px', borderBottom:'1px solid var(--border-subtle)' }}>
+                <span style={{ fontSize:9, color:'var(--text-tertiary)', fontWeight:600, letterSpacing:'0.05em' }}>DÍA</span>
+              </div>
+            </div>
             <div style={{ position:'relative', height:24*pxPerHour }}>
               <HourLines pxh={pxPerHour}/>
             </div>
@@ -573,23 +635,61 @@ const WeeklyCalendar = () => {
           <div className="calendar-grid" ref={gridRef}>
 
             {/* Cabeceras */}
-            <div style={{ position:'sticky', top:0, zIndex:20, display:'flex', height:HEADER_H, background:'var(--bg-primary)', borderBottom:'1px solid var(--border-subtle)' }}>
-              {weekDays.map((date, i) => {
-                const ds      = format(date,'yyyy-MM-dd');
-                const isToday = ds === todayStr;
-                const cnt     = weekEntries.filter(e => e.date === ds).length;
-                return (
-                  <div key={ds} className={`day-header${isToday?' today':''}`}
-                    onClick={() => setSummaryDate(ds)}
-                    style={{ width: colWidth, flexShrink: 0, borderRight: '1px solid var(--border-subtle)' }}>
-                    <div className="day-label">{format(date,'EEE',{locale:es}).toUpperCase()}</div>
-                    <div className={`day-num${isToday?' today-dot':''}`}>{format(date,'d')}</div>
-                    {cnt > 0 && (
-                      <div style={{ width:6, height:6, borderRadius:'50%', background:'var(--accent-blue)', margin:'3px auto 0' }}/>
-                    )}
-                  </div>
-                );
-              })}
+            <div style={{ position:'sticky', top:0, zIndex:20, background:'var(--bg-primary)', borderBottom:'1px solid var(--border-subtle)' }}>
+              {/* Fila 1: etiquetas de día */}
+              <div style={{ display:'flex', height:DAY_LABEL_H, borderBottom:'1px solid var(--border-subtle)' }}>
+                {weekDays.map((date, i) => {
+                  const ds      = format(date,'yyyy-MM-dd');
+                  const isToday = ds === todayStr;
+                  const cnt     = weekTimedEntries.filter(e => e.date === ds).length;
+                  return (
+                    <div key={ds} className={`day-header${isToday?' today':''}`}
+                      onClick={() => setSummaryDate(ds)}
+                      style={{ width: colWidth, flexShrink: 0, borderRight: '1px solid var(--border-subtle)' }}>
+                      <div className="day-label">{format(date,'EEE',{locale:es}).toUpperCase()}</div>
+                      <div className={`day-num${isToday?' today-dot':''}`}>{format(date,'d')}</div>
+                      {cnt > 0 && (
+                        <div style={{ width:6, height:6, borderRadius:'50%', background:'var(--accent-blue)', margin:'3px auto 0' }}/>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Fila 2: tareas del día */}
+              <div style={{ display:'flex', height:ALL_DAY_H }}>
+                {weekDays.map((date) => {
+                  const ds = format(date,'yyyy-MM-dd');
+                  const allDayForDay = weekAllDayEntries.filter(e => e.date === ds);
+                  return (
+                    <div key={ds}
+                      style={{ width:colWidth, flexShrink:0, borderRight:'1px solid var(--border-subtle)',
+                        display:'flex', alignItems:'center', gap:3, padding:'0 4px', overflow:'hidden',
+                        cursor:'pointer', boxSizing:'border-box' }}
+                      onClick={() => setEntryModal({ date:ds, isAllDay:true })}
+                      onDragOver={handleDragOver}
+                      onDrop={e => handleDropAllDay(e, ds)}>
+                      {allDayForDay.map(e => {
+                        const t = tasks.find(x => x.id === e.taskId);
+                        const col = getEntryColor(e);
+                        return (
+                          <div key={e.id}
+                            onClick={ev => { ev.stopPropagation(); setEntryModal({ entry:e }); }}
+                            title={t?.title || 'Tarea del día'}
+                            style={{ fontSize:10, padding:'1px 5px', borderRadius:3, background:col,
+                              color: luminance(col) > 0.45 ? '#111' : '#fff',
+                              whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                              maxWidth: colWidth - 16, cursor:'pointer', fontWeight:500, flexShrink:0 }}>
+                            {t?.title || 'Tarea del día'}
+                          </div>
+                        );
+                      })}
+                      {allDayForDay.length === 0 && (
+                        <span style={{ fontSize:11, color:'var(--text-tertiary)', opacity:0.35, pointerEvents:'none' }}>+</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Columnas clickeables / drop zone */}
@@ -628,9 +728,9 @@ const WeeklyCalendar = () => {
               </div>
             )}
 
-            {/* Capa de eventos */}
+            {/* Capa de eventos (solo con hora — las tareas del día van arriba) */}
             <div style={{ position:'absolute', top:0, left:0, right:0, height:HEADER_H+24*pxPerHour, zIndex:10, pointerEvents:'none' }}>
-              {weekEntries.map(e => (
+              {weekTimedEntries.map(e => (
                 <div key={e.id} style={{ pointerEvents:'all' }}>
                   <EventBlock
                     entry={e}
@@ -653,7 +753,8 @@ const WeeklyCalendar = () => {
         <DayView currentDate={currentDate} entries={entries} tasks={tasks}
           pxPerHour={pxPerHour}
           onContextMenu={handleContextMenu}
-          onOpenEdit={(entry) => setEntryModal({ entry })}/>
+          onOpenEdit={(entry) => setEntryModal({ entry })}
+          onOpenAllDay={(ds) => setEntryModal({ date:ds, isAllDay:true })}/>
       )}
 
       {/* ══ VISTA MENSUAL ══════════════════════════════════════════════════ */}

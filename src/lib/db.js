@@ -233,7 +233,7 @@ export const entries = {
     return data.map(normalizeEntry)
   },
 
-  async create({ taskId, clientId, projectId, subtaskId, date, startTime, endTime, notes = '', isSubtask = false, userId }) {
+  async create({ taskId, clientId, projectId, subtaskId, date, startTime, endTime, notes = '', isSubtask = false, isAllDay = false, userId }) {
     const data = await query(
       supabase
         .from('entries')
@@ -243,10 +243,11 @@ export const entries = {
           project_id: projectId || null,
           subtask_id: subtaskId || null,
           date,
-          start_time: startTime,
-          end_time: endTime,
+          start_time: isAllDay ? null : (startTime || null),
+          end_time: isAllDay ? null : (endTime || null),
           notes,
           is_subtask: isSubtask,
+          is_all_day: isAllDay,
           user_id: userId,
         })
         .select()

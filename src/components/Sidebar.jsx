@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { Plus, Check, ChevronDown, ChevronRight, X, PanelLeftClose, PanelRightClose } from 'lucide-react';
+import { Plus, Check, ChevronDown, ChevronRight, X, PanelLeftClose, PanelRightClose, Briefcase } from 'lucide-react';
+import { SettingsPanel } from './AppHeader';
 
 const PALETTE = ['#4A90D9','#7B68EE','#4CAF89','#F0A500','#E05C5C','#00BCD4','#E91E8C','#FF6B35'];
 
@@ -311,11 +312,12 @@ const TaskItem = ({ task, onEdit, onEditSubtask }) => {
 ──────────────────────────────────────────────────────────────────────────── */
 const Sidebar = () => {
   const { tasks, updateSubtask, isMobileSidebarOpen, setIsMobileSidebarOpen } = useApp();
-  const [showModal, setShowModal]         = useState(false);
-  const [editingTask, setEditingTask]     = useState(null);
+  const [showModal, setShowModal]           = useState(false);
+  const [editingTask, setEditingTask]       = useState(null);
   const [editingSubtask, setEditingSubtask] = useState(null); // { task, subtask }
-  const [filter, setFilter]               = useState('all');
-  const [collapsed, setCollapsed]         = useState(false);
+  const [filter, setFilter]                 = useState('all');
+  const [collapsed, setCollapsed]           = useState(false);
+  const [showClientPanel, setShowClientPanel] = useState(false);
 
   // Subtask Edit Input State
   const [stEditTitle, setStEditTitle] = useState('');
@@ -363,10 +365,16 @@ const Sidebar = () => {
         {!collapsed && <span style={{ fontWeight:600, fontSize:13 }}>Tareas</span>}
         <div className="flex-row gap-1">
           {!collapsed && (
-            <button className="btn btn-ghost btn-icon btn-sm" title="Nueva tarea"
-              onClick={() => { setEditingTask(null); setShowModal(true); }}>
-              <Plus size={16}/>
-            </button>
+            <>
+              <button className="btn btn-ghost btn-icon btn-sm" title="Clientes y Proyectos"
+                onClick={() => setShowClientPanel(true)}>
+                <Briefcase size={15}/>
+              </button>
+              <button className="btn btn-ghost btn-icon btn-sm" title="Nueva tarea"
+                onClick={() => { setEditingTask(null); setShowModal(true); }}>
+                <Plus size={16}/>
+              </button>
+            </>
           )}
           <button className="btn btn-ghost btn-icon btn-sm desktop-only" title={collapsed ? "Expandir" : "Contraer panel"}
             onClick={() => setCollapsed(!collapsed)}>
@@ -421,6 +429,9 @@ const Sidebar = () => {
         onClose={() => { setShowModal(false); setEditingTask(null); }}
       />
     )}
+
+    {/* Panel Clientes y Proyectos */}
+    {showClientPanel && <SettingsPanel onClose={() => setShowClientPanel(false)}/>}
 
     {/* Subtarea Edit Modal */}
     {editingSubtask && (

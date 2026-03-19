@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Sun, Moon, Settings, X, Plus, Trash2, Menu, LogOut } from 'lucide-react';
+import { Sun, Moon, X, Plus, Trash2, Menu, LogOut } from 'lucide-react';
 
 const PREDEFINED_COLORS = [
   '#ef4444', '#f87171', '#dc2626', '#f97316', '#fb923c', '#ea580c',
@@ -13,7 +13,7 @@ const PREDEFINED_COLORS = [
 ];
 
 /* ── Panel de Configuración: Clientes y Proyectos ─────────────────────────── */
-const SettingsPanel = ({ onClose }) => {
+export const SettingsPanel = ({ onClose }) => {
   const { clients, projects, addClient, removeClient, updateClient, addProject, removeProject, updateProject, getProjectsByClient } = useApp();
   const [newClient, setNewClient]   = useState('');
   const [selectedClient, setSelectedClient] = useState('');
@@ -158,37 +158,29 @@ const SettingsPanel = ({ onClose }) => {
 const AppHeader = () => {
   const { theme, setTheme, setIsMobileSidebarOpen } = useApp();
   const { signOut } = useAuth();
-  const [showSettings, setShowSettings] = useState(false);
 
   return (
-    <>
-      <header className="app-header">
-        <div className="flex-row gap-2">
-          <button className="btn btn-ghost btn-icon mobile-only" onClick={() => setIsMobileSidebarOpen(true)}>
-            <Menu size={18}/>
-          </button>
-          <span className="app-header-title" style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:'var(--text-primary)', display:'flex', alignItems:'center', gap: '6px' }}>
-            <img src="/favicon.png" alt="Logo" style={{ width:18, height:18, borderRadius:3 }} />
-            My<span style={{ color:'var(--accent-blue)', marginLeft:'3px' }}>Todo List</span>
-          </span>
-        </div>
+    <header className="app-header">
+      <div className="flex-row gap-2">
+        <button className="btn btn-ghost btn-icon mobile-only" onClick={() => setIsMobileSidebarOpen(true)}>
+          <Menu size={18}/>
+        </button>
+        <span className="app-header-title" style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:'var(--text-primary)', display:'flex', alignItems:'center', gap: '6px' }}>
+          <img src="/favicon.png" alt="Logo" style={{ width:18, height:18, borderRadius:3 }} />
+          My<span style={{ color:'var(--accent-blue)', marginLeft:'3px' }}>Todo List</span>
+        </span>
+      </div>
 
-        <div className="flex-row gap-2">
-          <button className="btn btn-ghost btn-icon" title="Configuración" onClick={() => setShowSettings(true)}>
-            <Settings size={16}/>
-          </button>
-          <button className="btn btn-ghost btn-icon" title={theme==='dark' ? 'Modo claro' : 'Modo oscuro'}
-            onClick={() => setTheme(t => t==='dark' ? 'light' : 'dark')}>
-            {theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}
-          </button>
-          <button className="btn btn-ghost btn-icon" title="Cerrar sesión" onClick={signOut}>
-            <LogOut size={16}/>
-          </button>
-        </div>
-      </header>
-
-      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)}/>}
-    </>
+      <div className="flex-row gap-2">
+        <button className="btn btn-ghost btn-icon" title={theme==='dark' ? 'Modo claro' : 'Modo oscuro'}
+          onClick={() => setTheme(t => t==='dark' ? 'light' : 'dark')}>
+          {theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}
+        </button>
+        <button className="btn btn-ghost btn-icon" title="Cerrar sesión" onClick={signOut}>
+          <LogOut size={16}/>
+        </button>
+      </div>
+    </header>
   );
 };
 

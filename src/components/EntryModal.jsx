@@ -26,6 +26,7 @@ const EntryModal = ({ data, onClose }) => {
     startTime: existingEntry.startTime || '09:00',
     endTime:   existingEntry.endTime   || '10:00',
     notes:     existingEntry.notes     || '',
+    isAllDay:  existingEntry.isAllDay  || false,
   } : {
     taskId:    '',
     subtaskId: '',
@@ -35,6 +36,7 @@ const EntryModal = ({ data, onClose }) => {
     startTime: data.startTime || '09:00',
     endTime:   data.endTime   || '10:00',
     notes:     '',
+    isAllDay:  data.isAllDay  || false,
   });
 
   const projects = getProjectsByClient(form.clientId);
@@ -46,7 +48,7 @@ const EntryModal = ({ data, onClose }) => {
     setForm(p => ({
       ...p,
       taskId,
-      subtaskId: '', // reset subtarea al cambiar tarea
+      subtaskId: '',
       clientId:  task?.clientId  || p.clientId,
       projectId: task?.projectId || p.projectId,
     }));
@@ -55,7 +57,6 @@ const EntryModal = ({ data, onClose }) => {
   const handleSave = () => {
     if (!form.taskId && !form.clientId) return;
     const entryData = { ...form };
-    // Incluir subtaskTitle como caché si hay subtarea seleccionada
     if (form.subtaskId) {
       const st = taskSubtasks.find(s => s.id === form.subtaskId);
       entryData.subtaskTitle = st?.title || '';
@@ -83,12 +84,40 @@ const EntryModal = ({ data, onClose }) => {
       <div className="modal" style={{ maxWidth: 440 }}>
         <div className="modal-header">
           <h3 style={{ fontSize:15, fontWeight:600 }}>
-            {isEdit ? 'Editar entrada de tiempo' : 'Registrar tiempo'}
+            {isEdit ? 'Editar entrada' : 'Registrar tiempo'}
           </h3>
           <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}><X size={16}/></button>
         </div>
 
         <div className="modal-body">
+          {/* Toggle todo el día */}
+          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 10px',
+            background:'var(--surface-1)', borderRadius:'var(--radius-sm)', marginBottom:4 }}>
+            <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', flex:1, userSelect:'none' }}>
+              <div
+                onClick={() => setForm(p => ({ ...p, isAllDay: !p.isAllDay }))}
+                style={{
+                  width:36, height:20, borderRadius:10, cursor:'pointer', flexShrink:0,
+                  background: form.isAllDay ? 'var(--accent-blue)' : 'var(--border-default)',
+                  position:'relative', transition:'background .2s',
+                }}>
+                <div style={{
+                  position:'absolute', top:3, left: form.isAllDay ? 19 : 3,
+                  width:14, height:14, borderRadius:'50%', background:'#fff',
+                  transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
+                }}/>
+              </div>
+              <span style={{ fontSize:13, color:'var(--text-primary)', fontWeight: form.isAllDay ? 600 : 400 }}>
+                Tarea del día
+              </span>
+            </label>
+            {form.isAllDay && (
+              <span style={{ fontSize:11, color:'var(--accent-blue)', fontWeight:500 }}>
+                Sin hora específica
+              </span>
+            )}
+          </div>
+
           <div className="form-group">
             <label className="form-label">Tarea</label>
             <select className="input" value={form.taskId} onChange={e => handleTaskChange(e.target.value)}>
@@ -136,18 +165,20 @@ const EntryModal = ({ data, onClose }) => {
               onChange={e => setForm(p => ({...p, date: e.target.value}))}/>
           </div>
 
-          <div style={{ display:'flex', gap:8 }}>
-            <div className="form-group" style={{flex:1}}>
-              <label className="form-label">Hora Inicio</label>
-              <input type="time" className="input" value={form.startTime}
-                onChange={e => setForm(p => ({...p, startTime: e.target.value}))}/>
+          {!form.isAllDay && (
+            <div style={{ display:'flex', gap:8 }}>
+              <div className="form-group" style={{flex:1}}>
+                <label className="form-label">Hora Inicio</label>
+                <input type="time" className="input" value={form.startTime}
+                  onChange={e => setForm(p => ({...p, startTime: e.target.value}))}/>
+              </div>
+              <div className="form-group" style={{flex:1}}>
+                <label className="form-label">Hora Fin</label>
+                <input type="time" className="input" value={form.endTime}
+                  onChange={e => setForm(p => ({...p, endTime: e.target.value}))}/>
+              </div>
             </div>
-            <div className="form-group" style={{flex:1}}>
-              <label className="form-label">Hora Fin</label>
-              <input type="time" className="input" value={form.endTime}
-                onChange={e => setForm(p => ({...p, endTime: e.target.value}))}/>
-            </div>
-          </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">Notas / Descripción</label>
