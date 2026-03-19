@@ -724,3 +724,60 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .gap-1 { gap: 4px; }
 .ml-auto { margin-left: auto; }
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE DESIGN & OFFCANVAS
+   ═══════════════════════════════════════════════════════════════ */
+.mobile-only { display: none !important; }
+.desktop-only { display: flex; }
+
+.sidebar-overlay {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); z-index: 104;
+  opacity: 0; pointer-events: none; transition: var(--t-fast);
+}
+
+@media (max-width: 768px) {
+  .mobile-only { display: flex !important; }
+  .desktop-only { display: none !important; }
+
+  .sidebar-overlay { display: block; }
+  .sidebar-overlay.visible { opacity: 1; pointer-events: auto; }
+
+  .app-header { padding: 0 12px; height: 50px; }
+  
+  /* Sidebar Drawer */
+  .sidebar {
+    position: fixed !important;
+    top: 0; bottom: 0; left: 0;
+    height: 100vh !important;
+    max-height: 100vh;
+    z-index: 110 !important;
+    width: 280px !important;
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-xl);
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  
+  /* Modales más ajustados */
+  .modal {
+    max-width: 92vw !important;
+    margin: 16px;
+    padding: 16px;
+  }
+  
+  /* Calendario scrolleable en móvil */
+  .calendar-scroll { overflow-x: auto; }
+  .calendar-grid { min-width: 680px; } /* asegura scroll horizontal fluido en móvil para la vista de 7 días */
+  
+  /* Cabecera del calendario flex-wrap en caso de no caber */
+  .main-canvas > div:first-child { flex-wrap: wrap; padding: 10px !important; }
+  .view-switcher-btn { padding: 4px 8px !important; font-size: 11px !important; }
+}
+
+@media (max-width: 400px) {
+  .app-header-title { font-size: 15px !important; }
+}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Sun, Moon, Settings, X, Plus, Trash2 } from 'lucide-react';
+import { Sun, Moon, Settings, X, Plus, Trash2, Menu } from 'lucide-react';
 
 const PREDEFINED_COLORS = [
   '#ef4444', '#f87171', '#dc2626', '#f97316', '#fb923c', '#ea580c',
@@ -155,14 +155,17 @@ const SettingsPanel = ({ onClose }) => {
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
 const AppHeader = () => {
-  const { theme, setTheme } = useApp();
+  const { theme, setTheme, setIsMobileSidebarOpen } = useApp();
   const [showSettings, setShowSettings] = useState(false);
 
   return (
     <>
       <header className="app-header">
         <div className="flex-row gap-2">
-          <span style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:'var(--text-primary)', display:'flex', alignItems:'center', gap: '6px' }}>
+          <button className="btn btn-ghost btn-icon mobile-only" onClick={() => setIsMobileSidebarOpen(true)}>
+            <Menu size={18}/>
+          </button>
+          <span className="app-header-title" style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:'var(--text-primary)', display:'flex', alignItems:'center', gap: '6px' }}>
             <img src="/favicon.png" alt="Logo" style={{ width:18, height:18, borderRadius:3 }} />
             My<span style={{ color:'var(--accent-blue)', marginLeft:'3px' }}>Todo List</span>
           </span>

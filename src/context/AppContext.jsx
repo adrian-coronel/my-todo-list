@@ -22,6 +22,7 @@ const DEMO_PROJECTS = [
 
 export const AppProvider = ({ children }) => {
   const [theme, setTheme] = useState(() => load('ct_theme', 'dark'));
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // ── Catálogo ──────────────────────────────────────────────────────────────
   const [clients, setClients] = useState(() => load('ct_clients', DEMO_CLIENTS));
@@ -168,6 +169,7 @@ export const AppProvider = ({ children }) => {
   return (
     <AppContext.Provider value={{
       theme, setTheme,
+      isMobileSidebarOpen, setIsMobileSidebarOpen,
       clients, addClient, updateClient, removeClient,
       projects, addProject, updateProject, removeProject,
       tasks, addTask, updateTask, removeTask,

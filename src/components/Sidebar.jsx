@@ -303,7 +303,7 @@ const TaskItem = ({ task, onEdit, onEditSubtask }) => {
    Sidebar Principal
 ──────────────────────────────────────────────────────────────────────────── */
 const Sidebar = () => {
-  const { tasks, updateTask } = useApp();
+  const { tasks, updateTask, isMobileSidebarOpen, setIsMobileSidebarOpen } = useApp();
   const [showModal, setShowModal]         = useState(false);
   const [editingTask, setEditingTask]     = useState(null);
   const [editingSubtask, setEditingSubtask] = useState(null); // { task, subtask }
@@ -321,7 +321,9 @@ const Sidebar = () => {
   });
 
   return (
-    <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+    <>
+      <div className={`sidebar-overlay ${isMobileSidebarOpen ? 'visible' : ''}`} onClick={() => setIsMobileSidebarOpen(false)} />
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}${isMobileSidebarOpen ? ' mobile-open' : ''}`}>
       <div className="sidebar-header" style={{ justifyContent: collapsed ? 'center' : 'space-between', padding: collapsed ? '12px 0' : '12px 16px' }}>
         {!collapsed && <span style={{ fontWeight:600, fontSize:13 }}>Tareas</span>}
         <div className="flex-row gap-1">
@@ -331,9 +333,12 @@ const Sidebar = () => {
               <Plus size={16}/>
             </button>
           )}
-          <button className="btn btn-ghost btn-icon btn-sm" title={collapsed ? "Expandir" : "Contraer panel"}
+          <button className="btn btn-ghost btn-icon btn-sm desktop-only" title={collapsed ? "Expandir" : "Contraer panel"}
             onClick={() => setCollapsed(!collapsed)}>
             {collapsed ? <PanelRightClose size={16}/> : <PanelLeftClose size={16}/>}
+          </button>
+          <button className="btn btn-ghost btn-icon btn-sm mobile-only" title="Cerrar panel" onClick={() => setIsMobileSidebarOpen(false)}>
+            <X size={16}/>
           </button>
         </div>
       </div>
@@ -408,6 +413,7 @@ const Sidebar = () => {
         </div>
       )}
     </aside>
+    </>
   );
 };
 
