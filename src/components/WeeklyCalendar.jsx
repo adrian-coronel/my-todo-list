@@ -5,7 +5,7 @@ import {
   startOfMonth, endOfMonth, getDaysInMonth,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, ZoomIn, ZoomOut } from 'lucide-react';
 import DailySummaryModal from './DailySummaryModal';
 import EntryModal from './EntryModal';
 import ContextMenu from './ContextMenu';
@@ -373,7 +373,6 @@ const WeeklyCalendar = () => {
   const gridRef      = useRef(null);
   const calendarRef  = useRef(null);
   const lastTouchDist = useRef(null);
-  const wheelTimer   = useRef(null);
   const [colWidth, setColWidth] = useState(120);
 
   const startDate = startOfWeek(currentDate, { weekStartsOn:1 });
@@ -419,8 +418,8 @@ const WeeklyCalendar = () => {
   }, [view]);
 
   // ── Wheel: zoom (ctrl) + navegación horizontal (trackpad) ─────────────────
-  // Usamos ref para evitar stale closure en listener no-pasivo
-  const navigateRef = useRef(navigate);
+  const navigateRef  = useRef(navigate);
+  const accDeltaX    = useRef(0);
   useEffect(() => { navigateRef.current = navigate; }, [navigate]);
 
   useEffect(() => {
@@ -428,18 +427,26 @@ const WeeklyCalendar = () => {
     if (!el) return;
     const handler = (e) => {
       if (e.ctrlKey) {
-        // Zoom: ctrl+scroll en teclado/trackpad = pinch en trackpad macOS/Windows
+        // Zoom: ctrl+scroll en teclado = pinch en trackpad macOS/Windows
         e.preventDefault();
         const factor = e.deltaY < 0 ? 1.12 : 0.89;
         setPxPerHour(prev => Math.min(MAX_PPH, Math.max(MIN_PPH, Math.round(prev * factor))));
         return;
       }
-      // Navegación horizontal con trackpad
+      // Navegación horizontal con trackpad — acumular delta para evitar
+      // el bug de "dirección pegada" al cambiar sentido
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
       e.preventDefault();
-      if (wheelTimer.current) return;
-      navigateRef.current(e.deltaX > 20 ? 1 : -1);
-      wheelTimer.current = setTimeout(() => { wheelTimer.current = null; }, 450);
+      // Si el usuario cambió de dirección, resetear acumulador
+      if (e.deltaX !== 0 && accDeltaX.current !== 0 &&
+          Math.sign(e.deltaX) !== Math.sign(accDeltaX.current)) {
+        accDeltaX.current = 0;
+      }
+      accDeltaX.current += e.deltaX;
+      if (Math.abs(accDeltaX.current) >= 80) {
+        navigateRef.current(accDeltaX.current > 0 ? 1 : -1);
+        accDeltaX.current = 0;
+      }
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
@@ -532,6 +539,18 @@ const WeeklyCalendar = () => {
               <button key={v} className={`view-switcher-btn${view===v?' active':''}`} onClick={()=>setView(v)}>{l}</button>
             ))}
           </div>
+          {view !== 'month' && (
+            <div className="flex-row gap-1">
+              <button className="btn btn-ghost btn-icon btn-sm" title="Alejar (Ctrl+scroll abajo)"
+                onClick={() => setPxPerHour(p => Math.max(MIN_PPH, Math.round(p * 0.75)))}>
+                <ZoomOut size={14}/>
+              </button>
+              <button className="btn btn-ghost btn-icon btn-sm" title="Acercar (Ctrl+scroll arriba)"
+                onClick={() => setPxPerHour(p => Math.min(MAX_PPH, Math.round(p * 1.33)))}>
+                <ZoomIn size={14}/>
+              </button>
+            </div>
+          )}
           <button className="btn btn-outline btn-sm" onClick={() => setCurrentDate(new Date())}>
             <Calendar size={13}/> Hoy
           </button>

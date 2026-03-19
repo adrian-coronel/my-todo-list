@@ -256,10 +256,12 @@ export const entries = {
   },
 
   async update(id, updates) {
+    // Excluir campos que no existen en la tabla (son solo caché del cliente)
+    const { subtaskTitle, userId, createdAt, ...dbFields } = updates
     const data = await query(
       supabase
         .from('entries')
-        .update(toSnake(updates))
+        .update(toSnake(dbFields))
         .eq('id', id)
         .select()
         .single()

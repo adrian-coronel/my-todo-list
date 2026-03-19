@@ -444,9 +444,9 @@ const Sidebar = () => {
           </div>
           <div className="flex-row gap-1" style={{ justifyContent:'flex-end' }}>
             <button className="btn btn-ghost btn-sm" onClick={() => setEditingSubtask(null)}>Cancelar</button>
-            <button className="btn btn-primary btn-sm" onClick={() => {
+            <button className="btn btn-primary btn-sm" onClick={async () => {
               if (!stEditTitle.trim()) return;
-              updateSubtask(editingSubtask.task.id, editingSubtask.subtask.id, { title: stEditTitle.trim(), description: stEditDesc.trim() });
+              await updateSubtask(editingSubtask.task.id, editingSubtask.subtask.id, { title: stEditTitle.trim(), description: stEditDesc.trim() });
               setEditingSubtask(null);
             }}>Guardar</button>
           </div>

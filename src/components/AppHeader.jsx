@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Sun, Moon, Settings, X, Plus, Trash2, Menu } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Sun, Moon, Settings, X, Plus, Trash2, Menu, LogOut } from 'lucide-react';
 
 const PREDEFINED_COLORS = [
   '#ef4444', '#f87171', '#dc2626', '#f97316', '#fb923c', '#ea580c',
@@ -156,6 +157,7 @@ const SettingsPanel = ({ onClose }) => {
 /* ── Header ───────────────────────────────────────────────────────────────── */
 const AppHeader = () => {
   const { theme, setTheme, setIsMobileSidebarOpen } = useApp();
+  const { signOut } = useAuth();
   const [showSettings, setShowSettings] = useState(false);
 
   return (
@@ -178,6 +180,9 @@ const AppHeader = () => {
           <button className="btn btn-ghost btn-icon" title={theme==='dark' ? 'Modo claro' : 'Modo oscuro'}
             onClick={() => setTheme(t => t==='dark' ? 'light' : 'dark')}>
             {theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}
+          </button>
+          <button className="btn btn-ghost btn-icon" title="Cerrar sesión" onClick={signOut}>
+            <LogOut size={16}/>
           </button>
         </div>
       </header>
