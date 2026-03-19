@@ -159,7 +159,7 @@ export const tasks = {
   },
 
   async update(id, updates) {
-    const { subtasks: _subtasks, ...rest } = updates
+    const { subtasks: _subtasks, colorOverride: _co, ...rest } = updates
     const data = await query(
       supabase
         .from('tasks')
