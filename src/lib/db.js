@@ -181,11 +181,23 @@ export const tasks = {
 // ---------------------------------------------------------------------------
 
 export const subtasks = {
-  async create({ taskId, title, userId }) {
+  async create({ taskId, title, description = '', userId }) {
     const data = await query(
       supabase
         .from('subtasks')
-        .insert({ task_id: taskId, title, done: false, user_id: userId })
+        .insert({ task_id: taskId, title, description, done: false, user_id: userId })
+        .select()
+        .single()
+    )
+    return toCamel(data)
+  },
+
+  async update(id, updates) {
+    const data = await query(
+      supabase
+        .from('subtasks')
+        .update(toSnake(updates))
+        .eq('id', id)
         .select()
         .single()
     )

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
+import React, { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   startOfWeek, addDays, format,
@@ -11,14 +11,16 @@ import EntryModal from './EntryModal';
 import ContextMenu from './ContextMenu';
 
 /* ── Constantes clave ─────────────────────────────────────────────────────── */
-const PX_PER_HOUR = 64;    // altura en px de 1 hora
-const MINUTE_SNAP = 15;    // snap en minutos
-const HEADER_H    = 56;    // altura fija de la cabecera de cada día (= time-column spacer)
+const DEFAULT_PPH = 64;   // px por hora por defecto
+const MIN_PPH     = 32;   // zoom mínimo
+const MAX_PPH     = 384;  // zoom máximo
+const MINUTE_SNAP = 15;
+const HEADER_H    = 56;
 
-/* ── Utilitarios de tiempo ────────────────────────────────────────────────── */
-const timeToY = (t) => {
+/* ── Utilitarios ──────────────────────────────────────────────────────────── */
+const timeToY = (t, pxh) => {
   const [h, m] = t.split(':').map(Number);
-  return h * PX_PER_HOUR + m * (PX_PER_HOUR / 60);
+  return h * pxh + m * (pxh / 60);
 };
 const minsToTime = (mins) => {
   const mm = Math.max(0, Math.min(1439, Math.round(mins / MINUTE_SNAP) * MINUTE_SNAP));
@@ -29,12 +31,61 @@ const luminance = (hex) => {
   const r = parseInt(c.slice(0,2),16)/255, g = parseInt(c.slice(2,4),16)/255, b = parseInt(c.slice(4,6),16)/255;
   return 0.299*r + 0.587*g + 0.114*b;
 };
+const getTouchDist = (touches) => {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+/* ── Labels de hora dinámicos según zoom ──────────────────────────────────── */
+const HourLines = ({ pxh }) => {
+  const marks = [];
+  for (let h = 0; h < 24; h++) {
+    // Línea de hora principal + label
+    const showLabel = pxh < 48 ? h % 2 === 0 : true;
+    marks.push(
+      <React.Fragment key={h}>
+        <div className="hour-line" style={{ top: h * pxh }}/>
+        {showLabel && (
+          <div className="time-label" style={{ top: h * pxh }}>{String(h).padStart(2,'0')}:00</div>
+        )}
+        {/* :30 — visible con zoom ≥ 100 */}
+        {pxh >= 100 && (
+          <div className="hour-line half" style={{ top: h * pxh + pxh * 0.5 }}/>
+        )}
+        {/* :15 y :45 — visible con zoom ≥ 200 */}
+        {pxh >= 200 && (
+          <>
+            <div className="hour-line half" style={{ top: h * pxh + pxh * 0.25, opacity: 0.4 }}/>
+            <div className="hour-line half" style={{ top: h * pxh + pxh * 0.75, opacity: 0.4 }}/>
+          </>
+        )}
+        {/* Labels de minutos en zoom alto */}
+        {pxh >= 160 && (
+          <div className="time-label" style={{ top: h * pxh + pxh * 0.5, opacity: 0.55, fontSize: 10 }}>
+            {String(h).padStart(2,'0')}:30
+          </div>
+        )}
+        {pxh >= 280 && (
+          <>
+            <div className="time-label" style={{ top: h * pxh + pxh * 0.25, opacity: 0.4, fontSize: 9 }}>
+              {String(h).padStart(2,'0')}:15
+            </div>
+            <div className="time-label" style={{ top: h * pxh + pxh * 0.75, opacity: 0.4, fontSize: 9 }}>
+              {String(h).padStart(2,'0')}:45
+            </div>
+          </>
+        )}
+      </React.Fragment>
+    );
+  }
+  return <>{marks}</>;
+};
 
 /* ════════════════════════════════════════════════════════════════════════════
-   EventBlock — se renderiza en una capa absoluta a nivel del grid completo,
-   por lo que X = dayDiff * colWidth sin problemas de clipping.
+   EventBlock
 ════════════════════════════════════════════════════════════════════════════ */
-const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) => {
+const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpenEdit }) => {
   const { updateEntry, getEntryColor, getTask } = useApp();
   const outerRef = useRef(null);
 
@@ -43,23 +94,22 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
   const textColor = luminance(color) > 0.45 ? '#111' : '#fff';
   const isSubtask = !!entry.subtaskId;
 
-  // Posición X: encontrar la columna de forma segura (sin timezone issues)
   const dayDiff = weekDays.findIndex(d => format(d, 'yyyy-MM-dd') === entry.date);
   if (dayDiff === -1) return null;
 
-  const y0 = timeToY(entry.startTime);
-  const y1 = timeToY(entry.endTime);
-  const blockH = Math.max(y1 - y0, PX_PER_HOUR / 4);
+  const y0     = timeToY(entry.startTime, pxPerHour);
+  const y1     = timeToY(entry.endTime,   pxPerHour);
+  const blockH = Math.max(y1 - y0, pxPerHour / 4);
 
   const baseLeft = dayDiff * colWidth + 2;
   const baseTop  = HEADER_H + y0;
 
-  // ── DRAG (mover bloque a otro día/hora) ──────────────────────────────────
+  // ── DRAG ─────────────────────────────────────────────────────────────────
   const onMouseDownDrag = (e) => {
     if (e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     const ox = e.clientX, oy = e.clientY;
-    const snapH = MINUTE_SNAP * (PX_PER_HOUR / 60);
+    const snapH = MINUTE_SNAP * (pxPerHour / 60);
 
     const onMove = (mv) => {
       const el = outerRef.current; if (!el) return;
@@ -85,7 +135,7 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
       const durMin   = (eh * 60 + em) - (sh * 60 + sm);
 
       const newStartMins = (sh * 60 + sm) + snapDy;
-      const newDay = Math.max(0, Math.min(6, dayDiff + colDelta));
+      const newDay = Math.max(0, Math.min(weekDays.length - 1, dayDiff + colDelta));
       updateEntry(entry.id, {
         date:      format(weekDays[newDay], 'yyyy-MM-dd'),
         startTime: minsToTime(newStartMins),
@@ -100,21 +150,21 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
   const onMouseDownResizeBottom = (e) => {
     e.preventDefault(); e.stopPropagation();
     const oy    = e.clientY;
-    const snapH = MINUTE_SNAP * (PX_PER_HOUR / 60);
+    const snapH = MINUTE_SNAP * (pxPerHour / 60);
     const [sh, sm] = entry.startTime.split(':').map(Number);
     const [eh, em] = entry.endTime.split(':').map(Number);
 
     const onMove = (mv) => {
       const el = outerRef.current; if (!el) return;
       const dy = mv.clientY - oy;
-      el.style.height = `${Math.max(PX_PER_HOUR / 4, blockH + Math.round(dy / snapH) * snapH)}px`;
+      el.style.height = `${Math.max(pxPerHour / 4, blockH + Math.round(dy / snapH) * snapH)}px`;
     };
     const onUp = (mu) => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onUp);
       const el = outerRef.current; if (el) el.style.height = '';
       const dy   = mu.clientY - oy;
-      const snap = Math.round(dy / (MINUTE_SNAP * (PX_PER_HOUR / 60))) * MINUTE_SNAP;
+      const snap = Math.round(dy / (MINUTE_SNAP * (pxPerHour / 60))) * MINUTE_SNAP;
       const newEnd = (eh * 60 + em) + snap;
       updateEntry(entry.id, { endTime: minsToTime(Math.max((sh*60+sm)+MINUTE_SNAP, newEnd)) });
     };
@@ -126,7 +176,7 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
   const onMouseDownResizeTop = (e) => {
     e.preventDefault(); e.stopPropagation();
     const oy    = e.clientY;
-    const snapH = MINUTE_SNAP * (PX_PER_HOUR / 60);
+    const snapH = MINUTE_SNAP * (pxPerHour / 60);
     const [sh, sm] = entry.startTime.split(':').map(Number);
     const [eh, em] = entry.endTime.split(':').map(Number);
 
@@ -135,14 +185,14 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
       const dy = mv.clientY - oy;
       const snapped = Math.round(dy / snapH) * snapH;
       el.style.top    = `${baseTop + snapped}px`;
-      el.style.height = `${Math.max(PX_PER_HOUR / 4, blockH - snapped)}px`;
+      el.style.height = `${Math.max(pxPerHour / 4, blockH - snapped)}px`;
     };
     const onUp = (mu) => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onUp);
       const el = outerRef.current; if (el) { el.style.top=''; el.style.height=''; }
       const dy   = mu.clientY - oy;
-      const snap = Math.round(dy / (MINUTE_SNAP * (PX_PER_HOUR / 60))) * MINUTE_SNAP;
+      const snap = Math.round(dy / (MINUTE_SNAP * (pxPerHour / 60))) * MINUTE_SNAP;
       const newStart = (sh * 60 + sm) + snap;
       updateEntry(entry.id, { startTime: minsToTime(Math.min((eh*60+em)-MINUTE_SNAP, newStart)) });
     };
@@ -154,7 +204,7 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
     ? (entry.subtaskTitle || task?.subtasks?.find(s => s.id === entry.subtaskId)?.title || 'Subtarea')
     : null;
 
-  const isDone = isSubtask 
+  const isDone = isSubtask
     ? task?.subtasks?.find(s => s.id === entry.subtaskId)?.done
     : task?.status === 'done';
 
@@ -171,10 +221,7 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
         boxSizing: 'border-box',
       }}
     >
-      {/* Handle resize top */}
       <div className="resize-handle-top" onMouseDown={onMouseDownResizeTop}/>
-
-      {/* Contenido */}
       <div
         className={`event-block-inner${isSubtask ? ' is-subtask' : ''}${isDone ? ' is-done' : ''}`}
         style={{ background: color, color: textColor, borderColor: `${color}55` }}
@@ -186,17 +233,15 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
           <div className="event-parent-label">↳ {task.title}</div>
         )}
         <div className="event-title">{isSubtask ? subtaskTitle : (task?.title || 'Actividad')}</div>
-        {blockH > PX_PER_HOUR / 2 && (
+        {blockH > pxPerHour / 2 && (
           <div className="event-time">{entry.startTime}–{entry.endTime}</div>
         )}
-        {blockH > PX_PER_HOUR && entry.notes && (
+        {blockH > pxPerHour && entry.notes && (
           <div style={{ fontSize:10, opacity:0.8, marginTop:2, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>
             {entry.notes}
           </div>
         )}
       </div>
-
-      {/* Handle resize bottom */}
       <div className="resize-handle-bottom" onMouseDown={onMouseDownResizeBottom}/>
     </div>
   );
@@ -206,9 +251,9 @@ const EventBlock = ({ entry, colWidth, weekDays, onContextMenu, onOpenEdit }) =>
    Vista Mensual
 ════════════════════════════════════════════════════════════════════════════ */
 const MonthView = ({ currentDate, entries, tasks, onDayClick }) => {
-  const start    = startOfMonth(currentDate);
   const totalDays= getDaysInMonth(currentDate);
-  const firstDow = (start.getDay() + 6) % 7; // 0 = lunes
+  const start    = startOfMonth(currentDate);
+  const firstDow = (start.getDay() + 6) % 7;
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const dayNames = ['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'];
 
@@ -260,33 +305,28 @@ const MonthView = ({ currentDate, entries, tasks, onDayClick }) => {
 /* ════════════════════════════════════════════════════════════════════════════
    Vista Diaria
 ════════════════════════════════════════════════════════════════════════════ */
-const DayView = ({ currentDate, entries, tasks, onContextMenu, onOpenEdit }) => {
+const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpenEdit }) => {
   const scrollRef = useRef(null);
   const [nowY, setNowY] = useState(0);
   const dateStr    = format(currentDate, 'yyyy-MM-dd');
   const todayStr   = format(new Date(), 'yyyy-MM-dd');
   const dayEntries = entries.filter(e => e.date === dateStr);
-  // weekDays dummy array of 1 day for EventBlock compatibility
   const singleWeek = [currentDate];
 
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 8*PX_PER_HOUR - 40; }, [dateStr]);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 8 * pxPerHour - 40; }, [dateStr]);
   useEffect(() => {
-    const upd = () => { const n=new Date(); setNowY(n.getHours()*PX_PER_HOUR+n.getMinutes()*(PX_PER_HOUR/60)); };
+    const upd = () => { const n=new Date(); setNowY(n.getHours()*pxPerHour+n.getMinutes()*(pxPerHour/60)); };
     upd(); const t=setInterval(upd,60000); return ()=>clearInterval(t);
-  }, []);
+  }, [pxPerHour]);
 
   return (
     <div className="calendar-scroll" ref={scrollRef}>
-      {/* Columna de horas */}
       <div className="time-column">
         <div style={{ height:HEADER_H, borderBottom:'1px solid var(--border-subtle)', position:'sticky', top:0, background:'var(--bg-primary)', zIndex:25 }}/>
-        <div style={{ position:'relative', height:24*PX_PER_HOUR }}>
-          {Array.from({length:24}).map((_,h) => (
-            <div key={h} className="time-label" style={{ top:h*PX_PER_HOUR }}>{String(h).padStart(2,'0')}:00</div>
-          ))}
+        <div style={{ position:'relative', height:24*pxPerHour }}>
+          <HourLines pxh={pxPerHour}/>
         </div>
       </div>
-      {/* Columna única del día */}
       <div style={{ flex:1, position:'relative' }}>
         <div className={`day-header${dateStr===todayStr?' today':''}`}
           style={{ display:'flex', alignItems:'center', gap:10, padding:'0 16px', justifyContent:'flex-start', textAlign:'left' }}>
@@ -294,26 +334,24 @@ const DayView = ({ currentDate, entries, tasks, onContextMenu, onOpenEdit }) => 
           <span style={{ fontSize:22, fontWeight:700 }}>{format(currentDate,'d')}</span>
           <span className="day-label">{format(currentDate,'MMMM yyyy',{locale:es})}</span>
         </div>
-        {/* Líneas */}
-        {Array.from({length:24}).map((_,h)=>(
-          <React.Fragment key={h}>
-            <div className="hour-line" style={{ top:HEADER_H+h*PX_PER_HOUR }}/>
-            <div className="hour-line half" style={{ top:HEADER_H+h*PX_PER_HOUR+PX_PER_HOUR/2 }}/>
-          </React.Fragment>
-        ))}
-        {/* Línea de tiempo actual */}
+        <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, pointerEvents:'none' }}>
+          {Array.from({length:24}).map((_,h)=>(
+            <React.Fragment key={h}>
+              <div className="hour-line" style={{ top:h*pxPerHour }}/>
+              {pxPerHour >= 100 && <div className="hour-line half" style={{ top:h*pxPerHour+pxPerHour/2 }}/>}
+            </React.Fragment>
+          ))}
+        </div>
         {dateStr===todayStr && (
           <div className="current-time-line" style={{ top:HEADER_H+nowY }}>
             <div className="current-time-dot"/><div className="current-time-bar"/>
           </div>
         )}
-        {/* Eventos */}
         {dayEntries.map(e=>(
           <EventBlock key={e.id} entry={e} colWidth={Math.max(200,800)} weekDays={singleWeek}
-            onContextMenu={onContextMenu} onOpenEdit={onOpenEdit}/>
+            pxPerHour={pxPerHour} onContextMenu={onContextMenu} onOpenEdit={onOpenEdit}/>
         ))}
-        {/* Zona de clic */}
-        <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*PX_PER_HOUR, zIndex:1 }}/>
+        <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, zIndex:1 }}/>
       </div>
     </div>
   );
@@ -329,9 +367,13 @@ const WeeklyCalendar = () => {
   const [summaryDate, setSummaryDate] = useState(null);
   const [entryModal,  setEntryModal]  = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
+  const [pxPerHour,   setPxPerHour]   = useState(DEFAULT_PPH);
 
-  const scrollRef = useRef(null);
-  const gridRef   = useRef(null);
+  const scrollRef    = useRef(null);
+  const gridRef      = useRef(null);
+  const calendarRef  = useRef(null);
+  const lastTouchDist = useRef(null);
+  const wheelTimer   = useRef(null);
   const [colWidth, setColWidth] = useState(120);
 
   const startDate = startOfWeek(currentDate, { weekStartsOn:1 });
@@ -340,7 +382,7 @@ const WeeklyCalendar = () => {
   const todayStr  = format(new Date(), 'yyyy-MM-dd');
 
   // Scroll inicial
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 8*PX_PER_HOUR; }, []);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 8 * pxPerHour; }, []);
 
   // Medir ancho de columnas
   useLayoutEffect(() => {
@@ -354,9 +396,9 @@ const WeeklyCalendar = () => {
   // Línea de tiempo actual
   const [nowY, setNowY] = useState(0);
   useEffect(() => {
-    const upd = () => { const n=new Date(); setNowY(n.getHours()*PX_PER_HOUR+n.getMinutes()*(PX_PER_HOUR/60)); };
+    const upd = () => { const n=new Date(); setNowY(n.getHours()*pxPerHour+n.getMinutes()*(pxPerHour/60)); };
     upd(); const t=setInterval(upd,60000); return ()=>clearInterval(t);
-  }, []);
+  }, [pxPerHour]);
 
   // ESC cierra modales
   useEffect(() => {
@@ -370,23 +412,56 @@ const WeeklyCalendar = () => {
     return () => document.removeEventListener('keydown', fn);
   }, [contextMenu, entryModal, summaryDate]);
 
-  // Trackpad horizontal → navegar
-  const wheelTimer = useRef(null);
-  const handleWheel = (e) => {
-    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
-    e.preventDefault();
-    if (wheelTimer.current) return;
-    navigate(e.deltaX > 20 ? 1 : -1);
-    wheelTimer.current = setTimeout(() => { wheelTimer.current = null; }, 450);
-  };
-
-  const navigate = (dir) => {
+  const navigate = useCallback((dir) => {
     if (view === 'week')  setCurrentDate(d => addDays(d, dir*7));
     if (view === 'day')   setCurrentDate(d => addDays(d, dir));
     if (view === 'month') setCurrentDate(d => new Date(d.getFullYear(), d.getMonth()+dir, 1));
-  };
+  }, [view]);
 
-  // Drop desde sidebar (tarea o subtarea)
+  // ── Wheel: zoom (ctrl) + navegación horizontal (trackpad) ─────────────────
+  // Usamos ref para evitar stale closure en listener no-pasivo
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
+
+  useEffect(() => {
+    const el = calendarRef.current;
+    if (!el) return;
+    const handler = (e) => {
+      if (e.ctrlKey) {
+        // Zoom: ctrl+scroll en teclado/trackpad = pinch en trackpad macOS/Windows
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.12 : 0.89;
+        setPxPerHour(prev => Math.min(MAX_PPH, Math.max(MIN_PPH, Math.round(prev * factor))));
+        return;
+      }
+      // Navegación horizontal con trackpad
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      if (wheelTimer.current) return;
+      navigateRef.current(e.deltaX > 20 ? 1 : -1);
+      wheelTimer.current = setTimeout(() => { wheelTimer.current = null; }, 450);
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
+
+  // ── Touch pinch (móvil) ───────────────────────────────────────────────────
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      lastTouchDist.current = getTouchDist(e.touches);
+    }
+  };
+  const handleTouchMove = (e) => {
+    if (e.touches.length !== 2 || !lastTouchDist.current) return;
+    e.preventDefault();
+    const dist  = getTouchDist(e.touches);
+    const ratio = dist / lastTouchDist.current;
+    setPxPerHour(prev => Math.min(MAX_PPH, Math.max(MIN_PPH, Math.round(prev * ratio))));
+    lastTouchDist.current = dist;
+  };
+  const handleTouchEnd = () => { lastTouchDist.current = null; };
+
+  // Drop desde sidebar
   const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect='copy'; };
   const handleDrop = (e, dateStr, dayEl) => {
     e.preventDefault();
@@ -394,11 +469,11 @@ const WeeklyCalendar = () => {
     if (!raw) return;
     const payload = JSON.parse(raw);
 
-    const rect    = dayEl.getBoundingClientRect();
-    const relY    = e.clientY - rect.top - HEADER_H;
-    const startTime = minsToTime(Math.max(0, Math.round(relY / (PX_PER_HOUR/60) / MINUTE_SNAP) * MINUTE_SNAP));
-    const [h, m]  = startTime.split(':').map(Number);
-    const endTime = minsToTime(h*60+m+60);
+    const rect      = dayEl.getBoundingClientRect();
+    const relY      = e.clientY - rect.top - HEADER_H;
+    const startTime = minsToTime(Math.max(0, Math.round(relY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
+    const [h, m]    = startTime.split(':').map(Number);
+    const endTime   = minsToTime(h*60+m+60);
 
     if (payload.type === 'task') {
       const task = tasks.find(t => t.id === payload.taskId);
@@ -409,7 +484,7 @@ const WeeklyCalendar = () => {
       if (!task) return;
       const st = task.subtasks?.find(s => s.id === payload.subtaskId);
       if (!st) return;
-      addEntry({ taskId:task.id, subtaskId:st.id, subtaskTitle:st.title, clientId:task.clientId, projectId:task.projectId, date:dateStr, startTime, endTime, notes:'' });
+      addEntry({ taskId:task.id, subtaskId:st.id, subtaskTitle:st.title, clientId:task.clientId, projectId:task.projectId, date:dateStr, startTime, endTime, notes:'', isSubtask:true });
     }
   };
 
@@ -418,7 +493,7 @@ const WeeklyCalendar = () => {
     if (e.target.closest('.event-block-inner') || e.target.closest('.resize-handle-top') || e.target.closest('.resize-handle-bottom')) return;
     const relY = e.clientY - dayEl.getBoundingClientRect().top - HEADER_H;
     if (relY < 0) return;
-    const startTime = minsToTime(Math.max(0, Math.round(relY / (PX_PER_HOUR/60) / MINUTE_SNAP) * MINUTE_SNAP));
+    const startTime = minsToTime(Math.max(0, Math.round(relY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
     const [h, m]    = startTime.split(':').map(Number);
     setEntryModal({ date:dateStr, startTime, endTime: minsToTime(h*60+m+60) });
   };
@@ -436,9 +511,15 @@ const WeeklyCalendar = () => {
     : [];
 
   return (
-    <div className="calendar-container" onWheel={handleWheel} style={{ touchAction:'pan-y' }}>
-
-      {/* ── Barra de navegación ─────────────────────────────────────────── */}
+    <div
+      className="calendar-container"
+      ref={calendarRef}
+      style={{ touchAction: 'pan-x pan-y' }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* ── Barra de navegación ──────────────────────────────────────────── */}
       <div className="calendar-nav">
         <div className="flex-row gap-2">
           <button className="btn btn-ghost btn-icon" onClick={() => navigate(-1)}><ChevronLeft size={18}/></button>
@@ -457,25 +538,22 @@ const WeeklyCalendar = () => {
         </div>
       </div>
 
-      {/* ══════════ VISTA SEMANAL ══════════════════════════════════════════ */}
+      {/* ══ VISTA SEMANAL ══════════════════════════════════════════════════ */}
       {view === 'week' && (
         <div className="calendar-scroll" ref={scrollRef}>
 
           {/* Columna de horas */}
           <div className="time-column">
-            {/* Spacer que iguala exactamente HEADER_H */}
             <div style={{ height:HEADER_H, borderBottom:'1px solid var(--border-subtle)', position:'sticky', top:0, background:'var(--bg-primary)', zIndex:25 }}/>
-            <div style={{ position:'relative', height:24*PX_PER_HOUR }}>
-              {Array.from({length:24}).map((_,h) => (
-                <div key={h} className="time-label" style={{ top:h*PX_PER_HOUR }}>{String(h).padStart(2,'0')}:00</div>
-              ))}
+            <div style={{ position:'relative', height:24*pxPerHour }}>
+              <HourLines pxh={pxPerHour}/>
             </div>
           </div>
 
           {/* Grid de días */}
           <div className="calendar-grid" ref={gridRef}>
 
-            {/* ─ Cabeceras de días (sticky) ─ */}
+            {/* Cabeceras */}
             <div style={{ position:'sticky', top:0, zIndex:20, display:'flex', height:HEADER_H, background:'var(--bg-primary)', borderBottom:'1px solid var(--border-subtle)' }}>
               {weekDays.map((date, i) => {
                 const ds      = format(date,'yyyy-MM-dd');
@@ -495,12 +573,12 @@ const WeeklyCalendar = () => {
               })}
             </div>
 
-            {/* ─ Clickeable drop zone por columna (detrás de los eventos) ─ */}
+            {/* Columnas clickeables / drop zone */}
             {weekDays.map((date,i) => {
               const ds = format(date,'yyyy-MM-dd');
               return (
                 <div key={ds}
-                  style={{ position:'absolute', left:i*colWidth, top:0, width:colWidth, height:HEADER_H+24*PX_PER_HOUR, cursor:'crosshair', borderRight:'1px solid var(--border-subtle)', zIndex:2 }}
+                  style={{ position:'absolute', left:i*colWidth, top:0, width:colWidth, height:HEADER_H+24*pxPerHour, cursor:'crosshair', borderRight:'1px solid var(--border-subtle)', zIndex:2 }}
                   onDragOver={handleDragOver}
                   onDrop={e => handleDrop(e, ds, e.currentTarget)}
                   onClick={e => handleCellClick(e, ds, e.currentTarget)}
@@ -508,32 +586,38 @@ const WeeklyCalendar = () => {
               );
             })}
 
-
-            {/* ─ Líneas horizontales ─ */}
-            <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*PX_PER_HOUR, pointerEvents:'none', zIndex:1 }}>
+            {/* Líneas horizontales */}
+            <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, pointerEvents:'none', zIndex:1 }}>
               {Array.from({length:24}).map((_,h) => (
                 <React.Fragment key={h}>
-                  <div className="hour-line" style={{ top:h*PX_PER_HOUR }}/>
-                  <div className="hour-line half" style={{ top:h*PX_PER_HOUR+PX_PER_HOUR/2 }}/>
+                  <div className="hour-line" style={{ top:h*pxPerHour }}/>
+                  {pxPerHour >= 100 && <div className="hour-line half" style={{ top:h*pxPerHour+pxPerHour/2 }}/>}
+                  {pxPerHour >= 200 && (
+                    <>
+                      <div className="hour-line half" style={{ top:h*pxPerHour+pxPerHour*0.25, opacity:0.4 }}/>
+                      <div className="hour-line half" style={{ top:h*pxPerHour+pxPerHour*0.75, opacity:0.4 }}/>
+                    </>
+                  )}
                 </React.Fragment>
               ))}
             </div>
 
-            {/* ─ Línea de tiempo actual ─ */}
+            {/* Línea de tiempo actual */}
             {weekDays.some(d => format(d,'yyyy-MM-dd')===todayStr) && (
               <div className="current-time-line" style={{ position:'absolute', top:HEADER_H+nowY, left:0, right:0, zIndex:3, display:'flex', alignItems:'center', pointerEvents:'none' }}>
                 <div className="current-time-dot"/><div className="current-time-bar"/>
               </div>
             )}
 
-            {/* ─ Capa de eventos (todos los bloques en un solo contenedor) ─ */}
-            <div style={{ position:'absolute', top:0, left:0, right:0, height:HEADER_H+24*PX_PER_HOUR, zIndex:10, pointerEvents:'none' }}>
+            {/* Capa de eventos */}
+            <div style={{ position:'absolute', top:0, left:0, right:0, height:HEADER_H+24*pxPerHour, zIndex:10, pointerEvents:'none' }}>
               {weekEntries.map(e => (
                 <div key={e.id} style={{ pointerEvents:'all' }}>
                   <EventBlock
                     entry={e}
                     colWidth={colWidth}
                     weekDays={weekDays}
+                    pxPerHour={pxPerHour}
                     onContextMenu={handleContextMenu}
                     onOpenEdit={(entry) => setEntryModal({ entry })}
                   />
@@ -545,14 +629,15 @@ const WeeklyCalendar = () => {
         </div>
       )}
 
-      {/* ══════════ VISTA DIARIA ══════════════════════════════════════════ */}
+      {/* ══ VISTA DIARIA ═══════════════════════════════════════════════════ */}
       {view === 'day' && (
         <DayView currentDate={currentDate} entries={entries} tasks={tasks}
+          pxPerHour={pxPerHour}
           onContextMenu={handleContextMenu}
           onOpenEdit={(entry) => setEntryModal({ entry })}/>
       )}
 
-      {/* ══════════ VISTA MENSUAL ══════════════════════════════════════════ */}
+      {/* ══ VISTA MENSUAL ══════════════════════════════════════════════════ */}
       {view === 'month' && (
         <MonthView currentDate={currentDate} entries={entries} tasks={tasks}
           onDayClick={ds => setSummaryDate(ds)}/>

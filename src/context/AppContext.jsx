@@ -156,12 +156,20 @@ export const AppProvider = ({ children }) => {
   }
 
   // ── SUBTAREAS ─────────────────────────────────────────────────────────────
-  const addSubtask = async (taskId, title) => {
-    const st = await db.subtasks.create({ taskId, title, userId })
+  const addSubtask = async (taskId, title, description = '') => {
+    const st = await db.subtasks.create({ taskId, title, description, userId })
     setTasks(p => p.map(t =>
       t.id === taskId ? { ...t, subtasks: [...(t.subtasks || []), st] } : t
     ))
     return st
+  }
+
+  const updateSubtask = async (taskId, subtaskId, updates) => {
+    const st = await db.subtasks.update(subtaskId, updates)
+    setTasks(p => p.map(t => {
+      if (t.id !== taskId) return t
+      return { ...t, subtasks: (t.subtasks || []).map(s => s.id === subtaskId ? { ...s, ...st } : s) }
+    }))
   }
 
   const toggleSubtask = async (taskId, subtaskId) => {
@@ -259,7 +267,7 @@ export const AppProvider = ({ children }) => {
       clients, addClient, updateClient, removeClient,
       projects, addProject, updateProject, removeProject,
       tasks, addTask, updateTask, removeTask,
-      addSubtask, toggleSubtask, removeSubtask,
+      addSubtask, updateSubtask, toggleSubtask, removeSubtask,
       entries, addEntry, updateEntry, removeEntry,
       getEntriesByDay, getDailySummary,
       getClient, getProject, getTask, getProjectsByClient, getEntryColor,

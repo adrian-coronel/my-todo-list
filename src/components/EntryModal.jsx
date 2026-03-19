@@ -7,22 +7,19 @@ import { X } from 'lucide-react';
 const EntryModal = ({ data, onClose }) => {
   const { tasks, clients, getProjectsByClient, addEntry, updateEntry, removeEntry } = useApp();
 
-  // ESC para cerrar — #6
   useEffect(() => {
     const fn = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', fn);
     return () => document.removeEventListener('keydown', fn);
   }, [onClose]);
-  // data puede ser: { date, startTime, endTime } para nueva entrada
-  //                 { entry } para editar entrada existente
 
   const isEdit = !!data.entry;
   const existingEntry = data.entry;
-
   const today = format(new Date(), 'yyyy-MM-dd');
 
   const [form, setForm] = useState(isEdit ? {
     taskId:    existingEntry.taskId    || '',
+    subtaskId: existingEntry.subtaskId || '',
     clientId:  existingEntry.clientId  || '',
     projectId: existingEntry.projectId || '',
     date:      existingEntry.date      || today,
@@ -31,6 +28,7 @@ const EntryModal = ({ data, onClose }) => {
     notes:     existingEntry.notes     || '',
   } : {
     taskId:    '',
+    subtaskId: '',
     clientId:  '',
     projectId: '',
     date:      data.date      || today,
@@ -40,24 +38,37 @@ const EntryModal = ({ data, onClose }) => {
   });
 
   const projects = getProjectsByClient(form.clientId);
+  const selectedTask = tasks.find(t => t.id === form.taskId);
+  const taskSubtasks = selectedTask?.subtasks || [];
 
-  // Auto-rellenar cliente/proyecto al elegir tarea
   const handleTaskChange = (taskId) => {
     const task = tasks.find(t => t.id === taskId);
     setForm(p => ({
       ...p,
       taskId,
+      subtaskId: '', // reset subtarea al cambiar tarea
       clientId:  task?.clientId  || p.clientId,
       projectId: task?.projectId || p.projectId,
     }));
   };
 
   const handleSave = () => {
-    if (!form.taskId && !form.clientId) return; // al menos uno requerido
-    if (isEdit) {
-      updateEntry(existingEntry.id, form);
+    if (!form.taskId && !form.clientId) return;
+    const entryData = { ...form };
+    // Incluir subtaskTitle como caché si hay subtarea seleccionada
+    if (form.subtaskId) {
+      const st = taskSubtasks.find(s => s.id === form.subtaskId);
+      entryData.subtaskTitle = st?.title || '';
+      entryData.isSubtask = true;
     } else {
-      addEntry(form);
+      entryData.subtaskId = null;
+      entryData.subtaskTitle = '';
+      entryData.isSubtask = false;
+    }
+    if (isEdit) {
+      updateEntry(existingEntry.id, entryData);
+    } else {
+      addEntry(entryData);
     }
     onClose();
   };
@@ -85,6 +96,19 @@ const EntryModal = ({ data, onClose }) => {
               {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
             </select>
           </div>
+
+          {taskSubtasks.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Subtarea</label>
+              <select className="input" value={form.subtaskId}
+                onChange={e => setForm(p => ({ ...p, subtaskId: e.target.value }))}>
+                <option value="">— Tarea completa —</option>
+                {taskSubtasks.map(st => (
+                  <option key={st.id} value={st.id}>{st.title}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div style={{ display:'flex', gap:8 }}>
             <div className="form-group" style={{flex:1}}>

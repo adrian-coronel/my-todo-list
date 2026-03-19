@@ -136,7 +136,7 @@ const TaskModal = ({ onClose, editTask }) => {
    Ítem de Tarea en el Sidebar
 ──────────────────────────────────────────────────────────────────────────── */
 const TaskItem = ({ task, onEdit, onEditSubtask }) => {
-  const { addSubtask, toggleSubtask, removeSubtask, removeTask, getClient, getProject, updateTask } = useApp();
+  const { addSubtask, updateSubtask, toggleSubtask, removeSubtask, removeTask, getClient, getProject, updateTask } = useApp();
   const [expanded, setExpanded]   = useState(false);
   const [newSubtask, setNewSubtask] = useState('');
   const [hovered, setHovered]     = useState(false);
@@ -257,7 +257,14 @@ const TaskItem = ({ task, onEdit, onEditSubtask }) => {
               </div>
               {/* Barra de color del padre para identificar visualmente — #1 */}
               <div style={{ width:3, height:14, borderRadius:2, background:task.color||'var(--accent-blue)', flexShrink:0, opacity:0.7 }}/>
-              <span style={{ flex:1 }}>{st.title}</span>
+              <span style={{ flex:1, display:'flex', flexDirection:'column', gap:1, minWidth:0 }}>
+                <span>{st.title}</span>
+                {st.description && (
+                  <span style={{ fontSize:11, color:'var(--text-tertiary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    {st.description}
+                  </span>
+                )}
+              </span>
               <button className="btn btn-ghost btn-icon btn-sm"
                 onClick={e => { e.stopPropagation(); removeSubtask(task.id, st.id); }}>
                 <X size={10}/>
@@ -303,7 +310,7 @@ const TaskItem = ({ task, onEdit, onEditSubtask }) => {
    Sidebar Principal
 ──────────────────────────────────────────────────────────────────────────── */
 const Sidebar = () => {
-  const { tasks, updateTask, isMobileSidebarOpen, setIsMobileSidebarOpen } = useApp();
+  const { tasks, updateSubtask, isMobileSidebarOpen, setIsMobileSidebarOpen } = useApp();
   const [showModal, setShowModal]         = useState(false);
   const [editingTask, setEditingTask]     = useState(null);
   const [editingSubtask, setEditingSubtask] = useState(null); // { task, subtask }
@@ -312,7 +319,13 @@ const Sidebar = () => {
 
   // Subtask Edit Input State
   const [stEditTitle, setStEditTitle] = useState('');
-  useEffect(() => { if (editingSubtask) setStEditTitle(editingSubtask.subtask.title); }, [editingSubtask]);
+  const [stEditDesc,  setStEditDesc]  = useState('');
+  useEffect(() => {
+    if (editingSubtask) {
+      setStEditTitle(editingSubtask.subtask.title);
+      setStEditDesc(editingSubtask.subtask.description || '');
+    }
+  }, [editingSubtask]);
 
   const filtered = tasks.filter(t => {
     if (filter === 'pending') return t.status !== 'done';
@@ -409,27 +422,31 @@ const Sidebar = () => {
       />
     )}
 
-    {/* Subtarea Edit Modal (Popup chiquito) */}
+    {/* Subtarea Edit Modal */}
     {editingSubtask && (
       <div className="modal-overlay" style={{ background:'rgba(0,0,0,0.4)', zIndex:1100 }} onClick={(e) => e.target === e.currentTarget && setEditingSubtask(null)}>
-        <div className="modal" style={{ maxWidth: 300, padding:16, animation:'fadeIn 0.1s' }}>
-          <div style={{ fontWeight:600, marginBottom:10, fontSize:13 }}>Editar subtarea</div>
-          <input className="input" autoFocus value={stEditTitle}
-            onChange={e => setStEditTitle(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Escape') setEditingSubtask(null);
-              if (e.key === 'Enter' && stEditTitle.trim()) {
-                const subs = editingSubtask.task.subtasks.map(s => s.id === editingSubtask.subtask.id ? { ...s, title:stEditTitle.trim() } : s);
-                updateTask(editingSubtask.task.id, { subtasks: subs });
-                setEditingSubtask(null);
-              }
-            }} />
-          <div className="flex-row gap-1" style={{ marginTop:12, justifyContent:'flex-end' }}>
+        <div className="modal" style={{ maxWidth: 340, padding:16, animation:'fadeIn 0.1s' }}>
+          <div style={{ fontWeight:600, marginBottom:12, fontSize:13 }}>Editar subtarea</div>
+          <div className="form-group" style={{ marginBottom:10 }}>
+            <label className="form-label">Título</label>
+            <input className="input" autoFocus value={stEditTitle}
+              onChange={e => setStEditTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') setEditingSubtask(null); }} />
+          </div>
+          <div className="form-group" style={{ marginBottom:12 }}>
+            <label className="form-label">Descripción</label>
+            <textarea className="input" rows={3}
+              style={{ resize:'vertical', fontSize:13 }}
+              placeholder="Detalle de la subtarea..."
+              value={stEditDesc}
+              onChange={e => setStEditDesc(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') setEditingSubtask(null); }} />
+          </div>
+          <div className="flex-row gap-1" style={{ justifyContent:'flex-end' }}>
             <button className="btn btn-ghost btn-sm" onClick={() => setEditingSubtask(null)}>Cancelar</button>
             <button className="btn btn-primary btn-sm" onClick={() => {
               if (!stEditTitle.trim()) return;
-              const subs = editingSubtask.task.subtasks.map(s => s.id === editingSubtask.subtask.id ? { ...s, title:stEditTitle.trim() } : s);
-              updateTask(editingSubtask.task.id, { subtasks: subs });
+              updateSubtask(editingSubtask.task.id, editingSubtask.subtask.id, { title: stEditTitle.trim(), description: stEditDesc.trim() });
               setEditingSubtask(null);
             }}>Guardar</button>
           </div>
