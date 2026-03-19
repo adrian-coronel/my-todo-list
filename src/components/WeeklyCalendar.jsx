@@ -634,7 +634,7 @@ const WeeklyCalendar = () => {
           <div className="calendar-grid" ref={gridRef}>
 
             {/* Cabeceras */}
-            <div style={{ position:'sticky', top:0, zIndex:20, background:'var(--bg-primary)', borderBottom:'1px solid var(--border-subtle)' }}>
+            <div style={{ position:'sticky', top:0, zIndex:20, background:'var(--bg-primary)', borderBottom:'1px solid var(--border-subtle)', height:HEADER_H, alignSelf:'flex-start' }}>
               {/* Fila 1: etiquetas de día */}
               <div style={{ display:'flex', height:DAY_LABEL_H, borderBottom:'1px solid var(--border-subtle)' }}>
                 {weekDays.map((date, i) => {
