@@ -33,11 +33,11 @@ const SettingsPanel = ({ onClose }) => {
           {/* Crear cliente */}
           <div>
             <label className="form-label">Nuevo Cliente</label>
-            <div className="flex-row gap-2" style={{ marginTop:4 }}>
+            <div className="flex-row-responsive" style={{ marginTop:4 }}>
               <input className="input" style={{flex:1}} placeholder="Ej. Acme Corp"
                 value={newClient} onChange={e => setNewClient(e.target.value)}
-                onKeyDown={e => { if(e.key==='Enter' && newClient.trim()) { addClient(newClient.trim(), COLORS[clients.length%COLORS.length]); setNewClient(''); }}}/>
-              <button className="btn btn-primary" onClick={() => { if(newClient.trim()){ addClient(newClient.trim(), COLORS[clients.length%COLORS.length]); setNewClient(''); }}}>
+                onKeyDown={e => { if(e.key==='Enter' && newClient.trim()) { addClient(newClient.trim(), PREDEFINED_COLORS[clients.length%PREDEFINED_COLORS.length]); setNewClient(''); }}}/>
+              <button className="btn btn-primary" onClick={() => { if(newClient.trim()){ addClient(newClient.trim(), PREDEFINED_COLORS[clients.length%PREDEFINED_COLORS.length]); setNewClient(''); }}}>
                 <Plus size={14}/> Agregar
               </button>
             </div>
@@ -76,7 +76,7 @@ const SettingsPanel = ({ onClose }) => {
                 <option value="">Seleccionar cliente...</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <div className="flex-row gap-2">
+              <div className="flex-row-responsive">
                 <input className="input" style={{flex:1}} placeholder="Nombre del proyecto"
                   value={newProject} onChange={e => setNewProject(e.target.value)}
                   onKeyDown={e => { if(e.key==='Enter' && newProject.trim() && selectedClient){

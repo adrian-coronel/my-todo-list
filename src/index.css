@@ -367,7 +367,13 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-subtle);
 }
-.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.modal-body { 
+  padding: 16px 20px; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 16px; 
+  overflow-y: auto;
+}
 .modal-footer {
   padding: 14px 20px;
   border-top: 1px solid var(--border-subtle);
@@ -725,6 +731,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .gap-1 { gap: 4px; }
 .ml-auto { margin-left: auto; }
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flex-row-responsive { display: flex; align-items: center; }
 
 /* ═══════════════════════════════════════════════════════════════
    RESPONSIVE DESIGN & OFFCANVAS
@@ -765,10 +772,16 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
   
   /* Modales más ajustados */
   .modal {
-    max-width: 92vw !important;
-    margin: 16px;
-    padding: 16px;
+    max-width: calc(100vw - 24px) !important;
+    max-height: 90vh !important;
+    width: 100% !important;
   }
+  .modal-header { padding: 12px 16px; }
+  .modal-body { padding: 16px; gap: 12px; }
+  .modal-footer { padding: 12px 16px; flex-direction: column-reverse; }
+  .modal-footer .btn { width: 100%; }
+
+  .flex-row-responsive { flex-direction: column; align-items: stretch; gap: 8px !important; }
   
   /* Calendario scrolleable en móvil */
   .calendar-scroll { overflow-x: auto; }

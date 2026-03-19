@@ -55,7 +55,7 @@ const TaskModal = ({ onClose, editTask }) => {
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth:440 }}>
+      <div className="modal" style={{ maxWidth:440, minHeight:'auto' }}>
         <div className="modal-header">
           <h3 style={{ fontSize:15, fontWeight:600 }}>{editTask ? 'Editar Tarea' : 'Nueva Tarea'}</h3>
           <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}><X size={16}/></button>
@@ -68,7 +68,7 @@ const TaskModal = ({ onClose, editTask }) => {
               onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}/>
           </div>
 
-          <div style={{ display:'flex', gap:8 }}>
+          <div className="flex-stack-group flex-row-responsive" style={{ display:'flex', gap:10 }}>
             <div className="form-group" style={{flex:1}}>
               <label className="form-label">Cliente</label>
               <select className="input" value={form.clientId}
@@ -109,7 +109,7 @@ const TaskModal = ({ onClose, editTask }) => {
                 {form.projectId ? '🎨 Heredado del proyecto' : form.clientId ? '🎨 Heredado del cliente' : 'Elige un color personalizado'}
               </div>
             )}
-            <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+            <div className="flex-row gap-2" style={{ flexWrap:'wrap' }}>
               {/* Vista previa del color actual */}
               <div style={{ width:24, height:24, borderRadius:'50%', background:form.color, border:'3px solid rgba(255,255,255,0.3)', flexShrink:0 }}/>
               <div style={{ width:1, height:20, background:'var(--border-default)' }}/>
@@ -320,10 +320,32 @@ const Sidebar = () => {
     return true;
   });
 
+  // Touch Swipes para cerrar y abrir Sidebar
+  const [touchX, setTouchX] = useState(null);
+  const handleTouchStart = e => setTouchX(e.touches[0].clientX);
+  const handleTouchMoveClose = e => {
+    if (touchX !== null && touchX - e.touches[0].clientX > 40) {
+      setIsMobileSidebarOpen(false); setTouchX(null);
+    }
+  };
+  const handleTouchMoveOpen = e => {
+    if (touchX !== null && e.touches[0].clientX - touchX > 40) {
+      setIsMobileSidebarOpen(true); setTouchX(null);
+    }
+  };
+  const handleTouchEnd = () => setTouchX(null);
+
   return (
     <>
+      {/* Trigger Edge para abrir menú con el dedo */}
+      {!isMobileSidebarOpen && (
+        <div className="mobile-only" style={{ position:'fixed', top:50, bottom:0, left:0, width:15, zIndex:100 }}
+             onTouchStart={handleTouchStart} onTouchMove={handleTouchMoveOpen} onTouchEnd={handleTouchEnd} />
+      )}
+      
       <div className={`sidebar-overlay ${isMobileSidebarOpen ? 'visible' : ''}`} onClick={() => setIsMobileSidebarOpen(false)} />
-      <aside className={`sidebar${collapsed ? ' collapsed' : ''}${isMobileSidebarOpen ? ' mobile-open' : ''}`}>
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}${isMobileSidebarOpen ? ' mobile-open' : ''}`}
+             onTouchStart={handleTouchStart} onTouchMove={handleTouchMoveClose} onTouchEnd={handleTouchEnd}>
       <div className="sidebar-header" style={{ justifyContent: collapsed ? 'center' : 'space-between', padding: collapsed ? '12px 0' : '12px 16px' }}>
         {!collapsed && <span style={{ fontWeight:600, fontSize:13 }}>Tareas</span>}
         <div className="flex-row gap-1">
@@ -376,43 +398,44 @@ const Sidebar = () => {
           </div>
         </>
       )}
+    </aside>
 
-      {/* Tarea Modal */}
-      {showModal && (
-        <TaskModal
-          editTask={editingTask}
-          onClose={() => { setShowModal(false); setEditingTask(null); }}
-        />
-      )}
+    {/* Popups desplazados fuera del "aside" para evitar contención de transforms */}
+    {/* Tarea Modal */}
+    {showModal && (
+      <TaskModal
+        editTask={editingTask}
+        onClose={() => { setShowModal(false); setEditingTask(null); }}
+      />
+    )}
 
-      {/* Subtarea Edit Modal (Popup chiquito) */}
-      {editingSubtask && (
-        <div className="modal-overlay" style={{ background:'rgba(0,0,0,0.4)', zIndex:1100 }} onClick={(e) => e.target === e.currentTarget && setEditingSubtask(null)}>
-          <div className="modal" style={{ maxWidth: 300, padding:16, animation:'fadeIn 0.1s' }}>
-            <div style={{ fontWeight:600, marginBottom:10, fontSize:13 }}>Editar subtarea</div>
-            <input className="input" autoFocus value={stEditTitle}
-              onChange={e => setStEditTitle(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Escape') setEditingSubtask(null);
-                if (e.key === 'Enter' && stEditTitle.trim()) {
-                  const subs = editingSubtask.task.subtasks.map(s => s.id === editingSubtask.subtask.id ? { ...s, title:stEditTitle.trim() } : s);
-                  updateTask(editingSubtask.task.id, { subtasks: subs });
-                  setEditingSubtask(null);
-                }
-              }} />
-            <div className="flex-row gap-1" style={{ marginTop:12, justifyContent:'flex-end' }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditingSubtask(null)}>Cancelar</button>
-              <button className="btn btn-primary btn-sm" onClick={() => {
-                if (!stEditTitle.trim()) return;
+    {/* Subtarea Edit Modal (Popup chiquito) */}
+    {editingSubtask && (
+      <div className="modal-overlay" style={{ background:'rgba(0,0,0,0.4)', zIndex:1100 }} onClick={(e) => e.target === e.currentTarget && setEditingSubtask(null)}>
+        <div className="modal" style={{ maxWidth: 300, padding:16, animation:'fadeIn 0.1s' }}>
+          <div style={{ fontWeight:600, marginBottom:10, fontSize:13 }}>Editar subtarea</div>
+          <input className="input" autoFocus value={stEditTitle}
+            onChange={e => setStEditTitle(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') setEditingSubtask(null);
+              if (e.key === 'Enter' && stEditTitle.trim()) {
                 const subs = editingSubtask.task.subtasks.map(s => s.id === editingSubtask.subtask.id ? { ...s, title:stEditTitle.trim() } : s);
                 updateTask(editingSubtask.task.id, { subtasks: subs });
                 setEditingSubtask(null);
-              }}>Guardar</button>
-            </div>
+              }
+            }} />
+          <div className="flex-row gap-1" style={{ marginTop:12, justifyContent:'flex-end' }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditingSubtask(null)}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={() => {
+              if (!stEditTitle.trim()) return;
+              const subs = editingSubtask.task.subtasks.map(s => s.id === editingSubtask.subtask.id ? { ...s, title:stEditTitle.trim() } : s);
+              updateTask(editingSubtask.task.id, { subtasks: subs });
+              setEditingSubtask(null);
+            }}>Guardar</button>
           </div>
         </div>
-      )}
-    </aside>
+      </div>
+    )}
     </>
   );
 };
