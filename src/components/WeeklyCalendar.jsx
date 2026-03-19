@@ -2,7 +2,7 @@ import React, { useState, useRef, useLayoutEffect, useEffect, useCallback } from
 import { useApp } from '../context/AppContext';
 import {
   startOfWeek, addDays, format,
-  startOfMonth, endOfMonth, getDaysInMonth,
+  startOfMonth, getDaysInMonth,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Calendar, ZoomIn, ZoomOut } from 'lucide-react';
@@ -512,7 +512,7 @@ const WeeklyCalendar = () => {
     const payload = JSON.parse(raw);
 
     const rect      = dayEl.getBoundingClientRect();
-    const relY      = e.clientY - rect.top - HEADER_H;
+    const relY      = e.clientY - rect.top; // dayEl starts at HEADER_H already
     const startTime = minsToTime(Math.max(0, Math.round(relY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
     const [h, m]    = startTime.split(':').map(Number);
     const endTime   = minsToTime(h*60+m+60);
@@ -553,8 +553,7 @@ const WeeklyCalendar = () => {
   // Click en celda → nueva entrada
   const handleCellClick = (e, dateStr, dayEl) => {
     if (e.target.closest('.event-block-inner') || e.target.closest('.resize-handle-top') || e.target.closest('.resize-handle-bottom')) return;
-    const relY = e.clientY - dayEl.getBoundingClientRect().top - HEADER_H;
-    if (relY < 0) return;
+    const relY = e.clientY - dayEl.getBoundingClientRect().top; // dayEl starts at HEADER_H already
     const startTime = minsToTime(Math.max(0, Math.round(relY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
     const [h, m]    = startTime.split(':').map(Number);
     setEntryModal({ date:dateStr, startTime, endTime: minsToTime(h*60+m+60) });
@@ -692,12 +691,12 @@ const WeeklyCalendar = () => {
               </div>
             </div>
 
-            {/* Columnas clickeables / drop zone */}
-            {weekDays.map((date,i) => {
+            {/* Columnas clickeables / drop zone — solo el grid de horas, NO el header */}
+            {weekDays.map((date, colIdx) => {
               const ds = format(date,'yyyy-MM-dd');
               return (
                 <div key={ds}
-                  style={{ position:'absolute', left:i*colWidth, top:0, width:colWidth, height:HEADER_H+24*pxPerHour, cursor:'crosshair', borderRight:'1px solid var(--border-subtle)', zIndex:2 }}
+                  style={{ position:'absolute', left:colIdx*colWidth, top:HEADER_H, width:colWidth, height:24*pxPerHour, cursor:'crosshair', borderRight:'1px solid var(--border-subtle)', zIndex:2 }}
                   onDragOver={handleDragOver}
                   onDrop={e => handleDrop(e, ds, e.currentTarget)}
                   onClick={e => handleCellClick(e, ds, e.currentTarget)}
