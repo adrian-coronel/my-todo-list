@@ -1,11 +1,24 @@
-import React from 'react';
-import { AppProvider } from './context/AppContext';
-import AppHeader from './components/AppHeader';
-import Sidebar from './components/Sidebar';
-import WeeklyCalendar from './components/WeeklyCalendar';
-import './index.css';
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { AppProvider } from './context/AppContext'
+import AppHeader from './components/AppHeader'
+import Sidebar from './components/Sidebar'
+import WeeklyCalendar from './components/WeeklyCalendar'
+import AuthScreen from './components/AuthScreen'
+import './index.css'
 
-function App() {
+function AppContent() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-primary)', color: 'var(--text-secondary)', fontSize: '14px' }}>
+        Cargando…
+      </div>
+    )
+  }
+
+  if (!user) return <AuthScreen />
+
   return (
     <AppProvider>
       <div className="app-layout">
@@ -18,7 +31,15 @@ function App() {
         </div>
       </div>
     </AppProvider>
-  );
+  )
 }
 
-export default App;
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  )
+}
+
+export default App
