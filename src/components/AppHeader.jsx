@@ -162,8 +162,9 @@ const AppHeader = () => {
     <>
       <header className="app-header">
         <div className="flex-row gap-2">
-          <span style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:'var(--text-primary)' }}>
-            Chrono<span style={{ color:'var(--accent-blue)' }}>Tracker</span>
+          <span style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:'var(--text-primary)', display:'flex', alignItems:'center', gap: '6px' }}>
+            <img src="/favicon.png" alt="Logo" style={{ width:18, height:18, borderRadius:3 }} />
+            My<span style={{ color:'var(--accent-blue)', marginLeft:'3px' }}>Todo List</span>
           </span>
         </div>
 
