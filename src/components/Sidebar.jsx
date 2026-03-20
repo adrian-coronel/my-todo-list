@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Plus, Check, ChevronDown, ChevronRight, X, PanelLeftClose, PanelRightClose, Briefcase } from 'lucide-react';
 import { SettingsPanel } from './AppHeader';
@@ -166,7 +166,7 @@ const TaskModal = ({ onClose, editTask }) => {
 /* ────────────────────────────────────────────────────────────────────────────
    Ítem de Tarea en el Sidebar
 ──────────────────────────────────────────────────────────────────────────── */
-const TaskItem = ({ task, onEdit, onEditSubtask, isSelected, onSelect, selectedIds }) => {
+const TaskItem = React.memo(({ task, onEdit, onEditSubtask, isSelected, onSelect, selectedIds }) => {
   const { addSubtask, updateSubtask, toggleSubtask, removeSubtask, removeTask, getClient, getProject, updateTask } = useApp();
   const [expanded, setExpanded]   = useState(false);
   const [newSubtask, setNewSubtask] = useState('');
@@ -341,7 +341,7 @@ const TaskItem = ({ task, onEdit, onEditSubtask, isSelected, onSelect, selectedI
       )}
     </div>
   );
-};
+});
 
 /* ────────────────────────────────────────────────────────────────────────────
    Sidebar Principal
@@ -356,14 +356,17 @@ const Sidebar = () => {
   const [showClientPanel, setShowClientPanel] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
 
-  const toggleSelect = (taskId) => {
+  const toggleSelect = useCallback((taskId) => {
     setSelectedTaskIds(prev => {
       const next = new Set(prev);
       if (next.has(taskId)) next.delete(taskId);
       else next.add(taskId);
       return next;
     });
-  };
+  }, []);
+
+  const handleEdit = useCallback((task) => { setEditingTask(task); setShowModal(true); }, []);
+  const handleEditSubtask = useCallback((task, subtask) => setEditingSubtask({ task, subtask }), []);
 
   // Subtask Edit Input State
   const [stEditTitle, setStEditTitle] = useState('');
@@ -375,11 +378,11 @@ const Sidebar = () => {
     }
   }, [editingSubtask]);
 
-  const filtered = tasks.filter(t => {
+  const filtered = useMemo(() => tasks.filter(t => {
     if (filter === 'pending') return t.status !== 'done';
     if (filter === 'done')    return t.status === 'done';
     return true;
-  });
+  }), [tasks, filter]);
 
   // Touch Swipes para cerrar y abrir Sidebar
   const [touchX, setTouchX] = useState(null);
@@ -474,8 +477,8 @@ const Sidebar = () => {
               </div>
             ) : filtered.map(t => (
               <TaskItem key={t.id} task={t}
-                onEdit={task => { setEditingTask(task); setShowModal(true); }}
-                onEditSubtask={(task, subtask) => setEditingSubtask({ task, subtask })}
+                onEdit={handleEdit}
+                onEditSubtask={handleEditSubtask}
                 isSelected={selectedTaskIds.has(t.id)}
                 onSelect={toggleSelect}
                 selectedIds={selectedTaskIds}/>

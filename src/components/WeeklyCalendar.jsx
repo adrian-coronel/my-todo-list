@@ -1,4 +1,4 @@
-import React, { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useLayoutEffect, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   startOfWeek, addDays, format,
@@ -40,7 +40,7 @@ const getTouchDist = (touches) => {
 };
 
 /* ── Labels de hora dinámicos según zoom ──────────────────────────────────── */
-const HourLines = ({ pxh }) => {
+const HourLines = React.memo(({ pxh }) => {
   const marks = [];
   for (let h = 0; h < 24; h++) {
     // Línea de hora principal + label
@@ -82,12 +82,12 @@ const HourLines = ({ pxh }) => {
     );
   }
   return <>{marks}</>;
-};
+});
 
 /* ════════════════════════════════════════════════════════════════════════════
    EventBlock
 ════════════════════════════════════════════════════════════════════════════ */
-const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpenEdit, isSelected, onSelect, onDropToAllDay, registerRef, onMultiDragSync, onMultiDragReset, onMultiDragCommit }) => {
+const EventBlock = React.memo(({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpenEdit, isSelected, onSelect, onDropToAllDay, registerRef, onMultiDragSync, onMultiDragReset, onMultiDragCommit }) => {
   const { updateEntry, getEntryColor, getTask } = useApp();
   const outerRef = useRef(null);
 
@@ -98,7 +98,7 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
 
   const task      = getTask(entry.taskId);
   const color     = getEntryColor(entry);
-  const textColor = luminance(color) > 0.45 ? '#111' : '#fff';
+  const textColor = useMemo(() => luminance(color) > 0.45 ? '#111' : '#fff', [color]);
   const isSubtask = !!entry.subtaskId;
 
   const dayDiff = weekDays.findIndex(d => format(d, 'yyyy-MM-dd') === entry.date);
@@ -153,7 +153,7 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
       const allDayCell = hits.find(h => h.dataset?.date && h.classList?.contains('allday-scroll'));
       if (allDayCell) {
         if (isSelected) onMultiDragReset && onMultiDragReset(entry.id);
-        onDropToAllDay && onDropToAllDay(entry.id);
+        onDropToAllDay && onDropToAllDay(entry.id, allDayCell.dataset.date);
         return;
       }
 
@@ -280,7 +280,7 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
       <div className="resize-handle-bottom" onMouseDown={onMouseDownResizeBottom}/>
     </div>
   );
-};
+});
 
 /* ════════════════════════════════════════════════════════════════════════════
    Vista Mensual
@@ -340,7 +340,7 @@ const MonthView = ({ currentDate, entries, tasks, onDayClick }) => {
 /* ════════════════════════════════════════════════════════════════════════════
    Vista Diaria
 ════════════════════════════════════════════════════════════════════════════ */
-const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpenEdit, onOpenAllDay }) => {
+const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpenEdit, onOpenAllDay, onDropAllDay, onDropToAllDay }) => {
   const scrollRef = useRef(null);
   const [nowY, setNowY] = useState(0);
   const { getEntryColor, updateEntry } = useApp();
@@ -373,16 +373,19 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
       <div style={{ flex:1, position:'relative' }}>
         {/* Etiqueta del día */}
         <div className={`day-header${dateStr===todayStr?' today':''}`}
-          style={{ height:DAY_LABEL_H, display:'flex', alignItems:'center', gap:10, padding:'0 16px', justifyContent:'flex-start', textAlign:'left', borderBottom:'1px solid var(--border-subtle)' }}>
+          style={{ height:DAY_LABEL_H, display:'flex', flexDirection:'row', alignItems:'center', gap:10, padding:'0 16px', justifyContent:'flex-start', textAlign:'left', borderBottom:'1px solid var(--border-subtle)' }}>
           <span className="day-label">{format(currentDate,'EEEE',{locale:es}).toUpperCase()}</span>
           <span style={{ fontSize:22, fontWeight:700 }}>{format(currentDate,'d')}</span>
           <span className="day-label">{format(currentDate,'MMMM yyyy',{locale:es})}</span>
         </div>
         {/* Fila all-day */}
         <div className="allday-scroll"
+          data-date={dateStr}
           style={{ height:ALL_DAY_H, display:'flex', alignItems:'center', gap:4, padding:'0 8px',
           borderBottom:'1px solid var(--border-subtle)', cursor:'pointer', overflowX:'auto', overflowY:'hidden', flexWrap:'nowrap' }}
           onClick={() => onOpenAllDay && onOpenAllDay(dateStr)}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); onDropAllDay && onDropAllDay(e, dateStr); }}
           onWheel={e => { if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.stopPropagation(); e.currentTarget.scrollLeft += e.deltaX; } }}>
           {allDayEntries.map(e => {
             const t = tasks.find(x => x.id === e.taskId);
@@ -420,7 +423,8 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
         )}
         {dayEntries.map(e=>(
           <EventBlock key={e.id} entry={e} colWidth={Math.max(200,800)} weekDays={singleWeek}
-            pxPerHour={pxPerHour} onContextMenu={onContextMenu} onOpenEdit={onOpenEdit}/>
+            pxPerHour={pxPerHour} onContextMenu={onContextMenu} onOpenEdit={onOpenEdit}
+            onDropToAllDay={onDropToAllDay}/>
         ))}
         <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, zIndex:1 }}
           onDragOver={e => e.preventDefault()}
@@ -455,6 +459,8 @@ const WeeklyCalendar = () => {
   const [pendingAllDayDrop,   setPendingAllDayDrop]   = useState(null); // { taskIds, dateStr }
   const [pendingEntryConvert, setPendingEntryConvert] = useState(null); // { entryIds: [] }
   const [selectedEntryIds,    setSelectedEntryIds]    = useState(new Set());
+  const selectedEntryIdsRef = useRef(selectedEntryIds);
+  useEffect(() => { selectedEntryIdsRef.current = selectedEntryIds; }, [selectedEntryIds]);
   const [dragCreate,          setDragCreate]          = useState(null); // { colIdx, dateStr, startRelY, endRelY }
 
   // Refs para multi-drag de EventBlocks
@@ -472,9 +478,9 @@ const WeeklyCalendar = () => {
   const isOverAlldayRef = useRef(false);
   const [colWidth, setColWidth] = useState(120);
 
-  const startDate = startOfWeek(currentDate, { weekStartsOn:1 });
-  const endDate   = addDays(startDate, 6);
-  const weekDays  = Array.from({length:7}).map((_,i) => addDays(startDate,i));
+  const startDate = useMemo(() => startOfWeek(currentDate, { weekStartsOn:1 }), [currentDate]);
+  const endDate   = useMemo(() => addDays(startDate, 6), [startDate]);
+  const weekDays  = useMemo(() => Array.from({length:7}).map((_,i) => addDays(startDate,i)), [startDate]);
   const todayStr  = format(new Date(), 'yyyy-MM-dd');
 
   // Scroll inicial
@@ -575,7 +581,7 @@ const WeeklyCalendar = () => {
   const handleTouchEnd = () => { lastTouchDist.current = null; };
 
   // Drop desde sidebar
-  const handleDragOver = (e) => { e.preventDefault(); };
+  const handleDragOver = useCallback((e) => { e.preventDefault(); }, []);
   const handleDrop = (e, dateStr, dayEl) => {
     e.preventDefault();
     const raw = e.dataTransfer.getData('application/json');
@@ -641,27 +647,31 @@ const WeeklyCalendar = () => {
   };
 
   // Selección de entradas del calendario
-  const toggleEntrySelect = (entryId) => {
+  const toggleEntrySelect = useCallback((entryId) => {
     setSelectedEntryIds(prev => {
       const next = new Set(prev);
       if (next.has(entryId)) next.delete(entryId);
       else next.add(entryId);
       return next;
     });
-  };
+  }, []);
 
   // Soltar entrada(s) en zona all-day → pedir confirmación
-  const handleEntryDropToAllDay = (entryId) => {
-    const idsToConvert = selectedEntryIds.has(entryId) && selectedEntryIds.size > 1
-      ? [...selectedEntryIds]
+  const handleEntryDropToAllDay = useCallback((entryId, targetDate) => {
+    const selected = selectedEntryIdsRef.current;
+    const idsToConvert = selected.has(entryId) && selected.size > 1
+      ? [...selected]
       : [entryId];
-    setPendingEntryConvert({ entryIds: idsToConvert });
-  };
+    setPendingEntryConvert({ entryIds: idsToConvert, targetDate });
+  }, []);
 
   const confirmEntryConvert = () => {
     if (!pendingEntryConvert) return;
     pendingEntryConvert.entryIds.forEach(id => {
-      updateEntry(id, { isAllDay: true, startTime: null, endTime: null });
+      updateEntry(id, {
+        isAllDay: true, startTime: null, endTime: null,
+        ...(pendingEntryConvert.targetDate && { date: pendingEntryConvert.targetDate }),
+      });
     });
     setSelectedEntryIds(new Set());
     setPendingEntryConvert(null);
@@ -669,28 +679,30 @@ const WeeklyCalendar = () => {
 
   // Multi-drag helpers — mover todas las entradas seleccionadas junto a la que se arrastra
   const handleMultiDragSync = useCallback((exceptId, dx, dy, snapH) => {
-    if (selectedEntryIds.size <= 1) return;
-    selectedEntryIds.forEach(id => {
+    const sel = selectedEntryIdsRef.current;
+    if (sel.size <= 1) return;
+    sel.forEach(id => {
       if (id === exceptId) return;
       const el = entryRefs.current.get(id);
       if (!el) return;
       el.style.transform = `translate(${Math.round(dx / colWidth) * colWidth}px, ${Math.round(dy / snapH) * snapH}px)`;
       el.style.opacity = '0.75'; el.style.zIndex = '50';
     });
-  }, [selectedEntryIds, colWidth]);
+  }, [colWidth]);
 
   const handleMultiDragReset = useCallback((exceptId) => {
-    selectedEntryIds.forEach(id => {
+    selectedEntryIdsRef.current.forEach(id => {
       if (id === exceptId) return;
       const el = entryRefs.current.get(id);
       if (!el) return;
       el.style.transform = ''; el.style.opacity = ''; el.style.zIndex = '';
     });
-  }, [selectedEntryIds]);
+  }, []);
 
   const handleMultiDragCommit = useCallback((exceptId, colDelta, snapDy) => {
-    if (selectedEntryIds.size <= 1) return;
-    selectedEntryIds.forEach(id => {
+    const sel = selectedEntryIdsRef.current;
+    if (sel.size <= 1) return;
+    sel.forEach(id => {
       if (id === exceptId) return;
       const entry = entries.find(e => e.id === id);
       if (!entry || !entry.startTime || !entry.endTime) return;
@@ -705,7 +717,7 @@ const WeeklyCalendar = () => {
       const el = entryRefs.current.get(id);
       if (el) { el.style.transform = ''; el.style.opacity = ''; el.style.zIndex = ''; }
     });
-  }, [selectedEntryIds, entries, weekDays, updateEntry]);
+  }, [entries, weekDays, updateEntry]);
 
   // MouseDown en celda: click crea entrada con 1h, drag dibuja rango → formulario
   const handleCellMouseDown = (e, dateStr, colIdx, dayEl) => {
@@ -745,7 +757,8 @@ const WeeklyCalendar = () => {
     document.addEventListener('mouseup', onUp);
   };
 
-  const handleContextMenu = (e, entry) => { e.preventDefault(); setContextMenu({ x:e.clientX, y:e.clientY, entry }); };
+  const handleContextMenu = useCallback((e, entry) => { e.preventDefault(); setContextMenu({ x:e.clientX, y:e.clientY, entry }); }, []);
+  const handleOpenEdit = useCallback((entry) => setEntryModal({ entry }), []);
 
   const navLabel = view === 'week'
     ? `${format(startDate,'d MMM',{locale:es})} – ${format(endDate,'d MMM, yyyy',{locale:es})}`
@@ -753,11 +766,11 @@ const WeeklyCalendar = () => {
       ? format(currentDate,'EEEE, d MMMM yyyy',{locale:es})
       : format(currentDate,'MMMM yyyy',{locale:es});
 
-  const weekEntries = view === 'week'
+  const weekEntries = useMemo(() => view === 'week'
     ? entries.filter(e => e.date >= format(startDate,'yyyy-MM-dd') && e.date <= format(endDate,'yyyy-MM-dd'))
-    : [];
-  const weekTimedEntries  = weekEntries.filter(e => !e.isAllDay);
-  const weekAllDayEntries = weekEntries.filter(e => e.isAllDay);
+    : [], [view, entries, startDate, endDate]);
+  const weekTimedEntries  = useMemo(() => weekEntries.filter(e => !e.isAllDay), [weekEntries]);
+  const weekAllDayEntries = useMemo(() => weekEntries.filter(e => e.isAllDay), [weekEntries]);
 
   return (
     <div
@@ -930,7 +943,7 @@ const WeeklyCalendar = () => {
                     weekDays={weekDays}
                     pxPerHour={pxPerHour}
                     onContextMenu={handleContextMenu}
-                    onOpenEdit={(entry) => setEntryModal({ entry })}
+                    onOpenEdit={handleOpenEdit}
                     isSelected={selectedEntryIds.has(e.id)}
                     onSelect={toggleEntrySelect}
                     onDropToAllDay={handleEntryDropToAllDay}
@@ -965,7 +978,9 @@ const WeeklyCalendar = () => {
           pxPerHour={pxPerHour}
           onContextMenu={handleContextMenu}
           onOpenEdit={(entry) => setEntryModal({ entry })}
-          onOpenAllDay={(ds) => setEntryModal({ date:ds, isAllDay:true })}/>
+          onOpenAllDay={(ds) => setEntryModal({ date:ds, isAllDay:true })}
+          onDropAllDay={handleDropAllDay}
+          onDropToAllDay={handleEntryDropToAllDay}/>
       )}
 
       {/* ══ VISTA MENSUAL ══════════════════════════════════════════════════ */}

@@ -9,7 +9,7 @@ import { supabase } from './supabase'
 // ---------------------------------------------------------------------------
 
 /** Convierte las claves de un objeto de snake_case a camelCase */
-function toCamel(obj) {
+export function toCamel(obj) {
   if (!obj || typeof obj !== 'object') return obj
   return Object.fromEntries(
     Object.entries(obj).map(([k, v]) => [
@@ -20,7 +20,7 @@ function toCamel(obj) {
 }
 
 /** PostgreSQL devuelve time como "HH:MM:SS" — truncar a "HH:MM" */
-function normalizeEntry(entry) {
+export function normalizeEntry(entry) {
   const e = toCamel(entry)
   if (e.startTime && e.startTime.length > 5) e.startTime = e.startTime.slice(0, 5)
   if (e.endTime && e.endTime.length > 5)   e.endTime   = e.endTime.slice(0, 5)

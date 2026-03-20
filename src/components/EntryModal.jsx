@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { format } from 'date-fns';
 import { X } from 'lucide-react';
@@ -7,11 +7,13 @@ import { X } from 'lucide-react';
 const EntryModal = ({ data, onClose }) => {
   const { tasks, clients, getProjectsByClient, addEntry, updateEntry, removeEntry } = useApp();
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const fn = (e) => { if (e.key === 'Escape') onClose(); };
+    const fn = (e) => { if (e.key === 'Escape') onCloseRef.current(); };
     document.addEventListener('keydown', fn);
     return () => document.removeEventListener('keydown', fn);
-  }, [onClose]);
+  }, []);
 
   const isEdit = !!data.entry;
   const existingEntry = data.entry;
@@ -42,16 +44,16 @@ const EntryModal = ({ data, onClose }) => {
   const projects = getProjectsByClient(form.clientId);
   
   // Filtrar tareas que no estén completadas
-  const activeTasks = tasks.filter(t => t.status !== 'done');
-  
+  const activeTasks = useMemo(() => tasks.filter(t => t.status !== 'done'), [tasks]);
+
   // Ordenar tareas: si está activado 'Todo el día', poner arriba las que ya están configuradas así
-  const sortedTasks = [...activeTasks].sort((a, b) => {
+  const sortedTasks = useMemo(() => [...activeTasks].sort((a, b) => {
     if (form.isAllDay) {
       if (a.isAllDay && !b.isAllDay) return -1;
       if (!a.isAllDay && b.isAllDay) return 1;
     }
     return a.title.localeCompare(b.title);
-  });
+  }), [activeTasks, form.isAllDay]);
 
   const selectedTask = tasks.find(t => t.id === form.taskId);
   const taskSubtasks = selectedTask?.subtasks || [];

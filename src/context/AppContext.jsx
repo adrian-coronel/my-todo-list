@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { useAuth } from './AuthContext'
 import * as db from '../lib/db'
+import { toCamel, normalizeEntry } from '../lib/db'
 import { supabase } from '../lib/supabase'
 
 const AppContext = createContext()
@@ -65,23 +66,28 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     if (!userId) return
 
+    const applyDelta = (setter, transform) => (payload) => {
+      const { eventType, new: rec, old } = payload
+      if (eventType === 'INSERT') setter(prev => [...prev, transform(rec)])
+      else if (eventType === 'UPDATE') setter(prev => prev.map(r => r.id === rec.id ? transform(rec) : r))
+      else if (eventType === 'DELETE') setter(prev => prev.filter(r => r.id !== old.id))
+    }
+
     const channel = supabase
       .channel(`user-${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => {
-        db.clients.list().then(setClients).catch(console.error)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
-        db.projects.list().then(setProjects).catch(console.error)
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' },
+        applyDelta(setClients, toCamel))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' },
+        applyDelta(setProjects, toCamel))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+        // Tasks contienen subtareas embebidas — requiere full reload para ensamblarlas
         db.tasks.list().then(setTasks).catch(console.error)
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'subtasks' }, () => {
         db.tasks.list().then(setTasks).catch(console.error)
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, () => {
-        db.entries.list().then(setEntries).catch(console.error)
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' },
+        applyDelta(setEntries, normalizeEntry))
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -223,10 +229,24 @@ export const AppProvider = ({ children }) => {
   }
 
   // ── Helpers de consulta (sin cambios de API) ──────────────────────────────
-  const getEntriesByDay = (dateStr) => entries.filter(e => e.date === dateStr)
+  const getClient = useCallback((id) => clients.find(c => c.id === id), [clients])
+  const getProject = useCallback((id) => projects.find(p => p.id === id), [projects])
+  const getTask = useCallback((id) => tasks.find(t => t.id === id), [tasks])
+  const getProjectsByClient = useCallback((clientId) => projects.filter(p => p.clientId === clientId), [projects])
 
-  const getDailySummary = (dateStr) => {
-    const dayEntries = getEntriesByDay(dateStr)
+  const getEntryColor = useCallback((entry) => {
+    const task = tasks.find(t => t.id === entry.taskId)
+    if (task?.color) return task.color
+    const project = projects.find(p => p.id === entry.projectId)
+    if (project?.color) return project.color
+    const client = clients.find(c => c.id === entry.clientId)
+    return client?.color || '#3B82F6'
+  }, [tasks, projects, clients])
+
+  const getEntriesByDay = useCallback((dateStr) => entries.filter(e => e.date === dateStr), [entries])
+
+  const getDailySummary = useCallback((dateStr) => {
+    const dayEntries = entries.filter(e => e.date === dateStr)
     const grouped = {}
     dayEntries.forEach(e => {
       const key = e.taskId || `${e.clientId}-${e.projectId}`
@@ -236,6 +256,7 @@ export const AppProvider = ({ children }) => {
         const project = projects.find(p => p.id === e.projectId)
         grouped[key] = { task, client, project, totalMinutes: 0, entries: [] }
       }
+      if (!e.startTime || !e.endTime) return
       const [sh, sm] = e.startTime.split(':').map(Number)
       const [eh, em] = e.endTime.split(':').map(Number)
       let diff = (eh * 60 + em) - (sh * 60 + sm)
@@ -244,21 +265,7 @@ export const AppProvider = ({ children }) => {
       grouped[key].entries.push(e)
     })
     return Object.values(grouped)
-  }
-
-  const getClient = (id) => clients.find(c => c.id === id)
-  const getProject = (id) => projects.find(p => p.id === id)
-  const getTask = (id) => tasks.find(t => t.id === id)
-  const getProjectsByClient = (clientId) => projects.filter(p => p.clientId === clientId)
-
-  const getEntryColor = (entry) => {
-    const task = getTask(entry.taskId)
-    if (task?.color) return task.color
-    const project = getProject(entry.projectId)
-    if (project?.color) return project.color
-    const client = getClient(entry.clientId)
-    return client?.color || '#3B82F6'
-  }
+  }, [entries, tasks, clients, projects])
 
   return (
     <AppContext.Provider value={{
