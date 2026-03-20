@@ -150,6 +150,7 @@ export const AppProvider = ({ children }) => {
   }
 
   const removeTask = async (id) => {
+    await db.entries.deleteByTaskId(id)
     await db.tasks.delete(id)
     setTasks(p => p.filter(t => t.id !== id))
     setEntries(p => p.filter(e => e.taskId !== id))

@@ -139,7 +139,7 @@ export const tasks = {
     return data.map(toCamel)
   },
 
-  async create({ title, description = '', clientId, projectId, color = '#3B82F6', userId }) {
+  async create({ title, description = '', clientId, projectId, color = '#3B82F6', colorOverride = false, isAllDay = false, userId }) {
     const data = await query(
       supabase
         .from('tasks')
@@ -149,6 +149,8 @@ export const tasks = {
           client_id: clientId || null,
           project_id: projectId || null,
           color,
+          color_override: colorOverride,
+          is_all_day: isAllDay,
           user_id: userId,
           status: 'pending',
         })
@@ -159,7 +161,7 @@ export const tasks = {
   },
 
   async update(id, updates) {
-    const { subtasks: _subtasks, colorOverride: _co, ...rest } = updates
+    const { subtasks: _subtasks, ...rest } = updates
     const data = await query(
       supabase
         .from('tasks')
@@ -272,5 +274,9 @@ export const entries = {
 
   async delete(id) {
     await query(supabase.from('entries').delete().eq('id', id))
+  },
+
+  async deleteByTaskId(taskId) {
+    await query(supabase.from('entries').delete().eq('task_id', taskId))
   },
 }

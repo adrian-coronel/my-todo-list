@@ -5,7 +5,7 @@ import {
   startOfMonth, getDaysInMonth,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Calendar, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, ZoomIn, ZoomOut, X } from 'lucide-react';
 import DailySummaryModal from './DailySummaryModal';
 import EntryModal from './EntryModal';
 import ContextMenu from './ContextMenu';
@@ -87,9 +87,14 @@ const HourLines = ({ pxh }) => {
 /* ════════════════════════════════════════════════════════════════════════════
    EventBlock
 ════════════════════════════════════════════════════════════════════════════ */
-const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpenEdit }) => {
+const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpenEdit, isSelected, onSelect, onDropToAllDay, registerRef, onMultiDragSync, onMultiDragReset, onMultiDragCommit }) => {
   const { updateEntry, getEntryColor, getTask } = useApp();
   const outerRef = useRef(null);
+
+  useEffect(() => {
+    registerRef && registerRef(entry.id, outerRef.current);
+    return () => { registerRef && registerRef(entry.id, null); };
+  }, [entry.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const task      = getTask(entry.taskId);
   const color     = getEntryColor(entry);
@@ -113,13 +118,18 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
     e.preventDefault(); e.stopPropagation();
     const ox = e.clientX, oy = e.clientY;
     const snapH = MINUTE_SNAP * (pxPerHour / 60);
+    let hasMoved = false;
 
     const onMove = (mv) => {
+      if (!hasMoved && (Math.abs(mv.clientX - ox) > 4 || Math.abs(mv.clientY - oy) > 4)) hasMoved = true;
+      if (!hasMoved) return;
       const el = outerRef.current; if (!el) return;
       const dx = mv.clientX - ox, dy = mv.clientY - oy;
       el.style.transform = `translate(${Math.round(dx / colWidth) * colWidth}px, ${Math.round(dy / snapH) * snapH}px)`;
       el.style.opacity = '0.75';
       el.style.zIndex  = '50';
+      // Mover el resto de entradas seleccionadas en sincronía
+      if (isSelected) onMultiDragSync && onMultiDragSync(entry.id, dx, dy, snapH);
     };
     const onUp = (mu) => {
       document.removeEventListener('mousemove', onMove);
@@ -129,6 +139,25 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
       el.style.opacity   = '';
       el.style.zIndex    = '';
 
+      // Click sin mover → seleccionar
+      if (!hasMoved) {
+        if (isSelected) onMultiDragReset && onMultiDragReset(entry.id);
+        onSelect && onSelect(entry.id);
+        return;
+      }
+
+      // Verificar si soltó en la zona all-day usando elementsFromPoint
+      el.style.pointerEvents = 'none';
+      const hits = document.elementsFromPoint(mu.clientX, mu.clientY);
+      el.style.pointerEvents = '';
+      const allDayCell = hits.find(h => h.dataset?.date && h.classList?.contains('allday-scroll'));
+      if (allDayCell) {
+        if (isSelected) onMultiDragReset && onMultiDragReset(entry.id);
+        onDropToAllDay && onDropToAllDay(entry.id);
+        return;
+      }
+
+      // Movimiento normal dentro del grid
       const dx = mu.clientX - ox, dy = mu.clientY - oy;
       const colDelta  = Math.round(dx / colWidth);
       const snapDy    = Math.round(dy / snapH) * MINUTE_SNAP;
@@ -144,6 +173,8 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
         startTime: minsToTime(newStartMins),
         endTime:   minsToTime(newStartMins + durMin),
       });
+      // Confirmar movimiento en el resto de entradas seleccionadas
+      if (isSelected) onMultiDragCommit && onMultiDragCommit(entry.id, colDelta, snapDy);
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup',   onUp);
@@ -226,8 +257,9 @@ const EventBlock = ({ entry, colWidth, weekDays, pxPerHour, onContextMenu, onOpe
     >
       <div className="resize-handle-top" onMouseDown={onMouseDownResizeTop}/>
       <div
-        className={`event-block-inner${isSubtask ? ' is-subtask' : ''}${isDone ? ' is-done' : ''}`}
-        style={{ background: color, color: textColor, borderColor: `${color}55` }}
+        className={`event-block-inner${isSubtask ? ' is-subtask' : ''}${isDone ? ' is-done' : ''}${isSelected ? ' is-selected-entry' : ''}`}
+        style={{ background: color, color: textColor, borderColor: isSelected ? '#fff' : `${color}55`,
+          outline: isSelected ? '2px solid #fff' : 'none', outlineOffset: '-2px' }}
         onMouseDown={onMouseDownDrag}
         onDoubleClick={e => { e.stopPropagation(); onOpenEdit && onOpenEdit(entry); }}
         onContextMenu={e => { e.preventDefault(); onContextMenu(e, entry); }}
@@ -311,7 +343,7 @@ const MonthView = ({ currentDate, entries, tasks, onDayClick }) => {
 const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpenEdit, onOpenAllDay }) => {
   const scrollRef = useRef(null);
   const [nowY, setNowY] = useState(0);
-  const { getEntryColor } = useApp();
+  const { getEntryColor, updateEntry } = useApp();
   const dateStr      = format(currentDate, 'yyyy-MM-dd');
   const todayStr     = format(new Date(), 'yyyy-MM-dd');
   const allEntries   = entries.filter(e => e.date === dateStr);
@@ -347,20 +379,24 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
           <span className="day-label">{format(currentDate,'MMMM yyyy',{locale:es})}</span>
         </div>
         {/* Fila all-day */}
-        <div style={{ height:ALL_DAY_H, display:'flex', alignItems:'center', gap:4, padding:'0 8px',
-          borderBottom:'1px solid var(--border-subtle)', cursor:'pointer', overflow:'hidden', flexWrap:'nowrap' }}
-          onClick={() => onOpenAllDay && onOpenAllDay(dateStr)}>
+        <div className="allday-scroll"
+          style={{ height:ALL_DAY_H, display:'flex', alignItems:'center', gap:4, padding:'0 8px',
+          borderBottom:'1px solid var(--border-subtle)', cursor:'pointer', overflowX:'auto', overflowY:'hidden', flexWrap:'nowrap' }}
+          onClick={() => onOpenAllDay && onOpenAllDay(dateStr)}
+          onWheel={e => { if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.stopPropagation(); e.currentTarget.scrollLeft += e.deltaX; } }}>
           {allDayEntries.map(e => {
             const t = tasks.find(x => x.id === e.taskId);
             const col = getEntryColor(e);
             return (
               <div key={e.id}
+                draggable
+                onDragStart={ev => { ev.stopPropagation(); ev.dataTransfer.setData('application/json', JSON.stringify({ type:'allday-entry', entryId:e.id })); ev.dataTransfer.effectAllowed='move'; }}
                 onClick={ev => { ev.stopPropagation(); onOpenEdit && onOpenEdit(e); }}
                 title={t?.title || 'Tarea del día'}
                 style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:col,
                   color: luminance(col) > 0.45 ? '#111' : '#fff',
                   whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                  cursor:'pointer', fontWeight:500, flexShrink:0 }}>
+                  cursor:'grab', fontWeight:500, flexShrink:0 }}>
                 {t?.title || 'Tarea del día'}
               </div>
             );
@@ -386,7 +422,21 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
           <EventBlock key={e.id} entry={e} colWidth={Math.max(200,800)} weekDays={singleWeek}
             pxPerHour={pxPerHour} onContextMenu={onContextMenu} onOpenEdit={onOpenEdit}/>
         ))}
-        <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, zIndex:1 }}/>
+        <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, zIndex:1 }}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => {
+            e.preventDefault();
+            const raw = e.dataTransfer.getData('application/json');
+            if (!raw) return;
+            const payload = JSON.parse(raw);
+            if (payload.type !== 'allday-entry') return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const relY = e.clientY - rect.top;
+            const startTime = minsToTime(Math.max(0, Math.round(relY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
+            const [h, m] = startTime.split(':').map(Number);
+            const endTime = minsToTime(h*60+m+60);
+            updateEntry(payload.entryId, { isAllDay:false, date:dateStr, startTime, endTime });
+          }}/>
       </div>
     </div>
   );
@@ -396,18 +446,30 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
    Calendario Principal
 ════════════════════════════════════════════════════════════════════════════ */
 const WeeklyCalendar = () => {
-  const { entries, addEntry, tasks, getEntryColor } = useApp();
+  const { entries, addEntry, updateEntry, tasks, getEntryColor } = useApp();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView]               = useState('week');
   const [summaryDate, setSummaryDate] = useState(null);
-  const [entryModal,  setEntryModal]  = useState(null);
-  const [contextMenu, setContextMenu] = useState(null);
+  const [entryModal,       setEntryModal]       = useState(null);
+  const [contextMenu,      setContextMenu]      = useState(null);
+  const [pendingAllDayDrop,   setPendingAllDayDrop]   = useState(null); // { taskIds, dateStr }
+  const [pendingEntryConvert, setPendingEntryConvert] = useState(null); // { entryIds: [] }
+  const [selectedEntryIds,    setSelectedEntryIds]    = useState(new Set());
+  const [dragCreate,          setDragCreate]          = useState(null); // { colIdx, dateStr, startRelY, endRelY }
+
+  // Refs para multi-drag de EventBlocks
+  const entryRefs = useRef(new Map());
+  const registerEntryRef = useCallback((id, el) => {
+    if (el) entryRefs.current.set(id, el);
+    else entryRefs.current.delete(id);
+  }, []);
   const [pxPerHour,   setPxPerHour]   = useState(DEFAULT_PPH);
 
-  const scrollRef    = useRef(null);
-  const gridRef      = useRef(null);
-  const calendarRef  = useRef(null);
-  const lastTouchDist = useRef(null);
+  const scrollRef      = useRef(null);
+  const gridRef        = useRef(null);
+  const calendarRef    = useRef(null);
+  const lastTouchDist  = useRef(null);
+  const isOverAlldayRef = useRef(false);
   const [colWidth, setColWidth] = useState(120);
 
   const startDate = startOfWeek(currentDate, { weekStartsOn:1 });
@@ -468,6 +530,15 @@ const WeeklyCalendar = () => {
         setPxPerHour(prev => Math.min(MAX_PPH, Math.max(MIN_PPH, Math.round(prev * factor))));
         return;
       }
+      // Si el mouse está sobre la fila de tareas del día, bloquear navegación de semana
+      if (isOverAlldayRef.current) {
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+          e.preventDefault();
+          const alldayEl = e.target.closest('.allday-scroll');
+          if (alldayEl) alldayEl.scrollLeft += e.deltaX;
+        }
+        return;
+      }
       // Navegación horizontal con trackpad — acumular delta para evitar
       // el bug de "dirección pegada" al cambiar sentido
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
@@ -504,7 +575,7 @@ const WeeklyCalendar = () => {
   const handleTouchEnd = () => { lastTouchDist.current = null; };
 
   // Drop desde sidebar
-  const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect='copy'; };
+  const handleDragOver = (e) => { e.preventDefault(); };
   const handleDrop = (e, dateStr, dayEl) => {
     e.preventDefault();
     const raw = e.dataTransfer.getData('application/json');
@@ -527,6 +598,8 @@ const WeeklyCalendar = () => {
       const st = task.subtasks?.find(s => s.id === payload.subtaskId);
       if (!st) return;
       addEntry({ taskId:task.id, subtaskId:st.id, subtaskTitle:st.title, clientId:task.clientId, projectId:task.projectId, date:dateStr, startTime, endTime, notes:'', isSubtask:true });
+    } else if (payload.type === 'allday-entry') {
+      updateEntry(payload.entryId, { isAllDay:false, date:dateStr, startTime, endTime });
     }
   };
 
@@ -537,7 +610,10 @@ const WeeklyCalendar = () => {
     const raw = e.dataTransfer.getData('application/json');
     if (!raw) return;
     const payload = JSON.parse(raw);
-    if (payload.type === 'task') {
+    if (payload.type === 'tasks') {
+      // Multi-selección: pedir confirmación antes de crear
+      setPendingAllDayDrop({ taskIds: payload.taskIds, dateStr });
+    } else if (payload.type === 'task') {
       const task = tasks.find(t => t.id === payload.taskId);
       if (!task) return;
       addEntry({ taskId:task.id, clientId:task.clientId, projectId:task.projectId, date:dateStr, isAllDay:true, notes:'' });
@@ -547,16 +623,126 @@ const WeeklyCalendar = () => {
       const st = task.subtasks?.find(s => s.id === payload.subtaskId);
       if (!st) return;
       addEntry({ taskId:task.id, subtaskId:st.id, subtaskTitle:st.title, clientId:task.clientId, projectId:task.projectId, date:dateStr, isAllDay:true, notes:'', isSubtask:true });
+    } else if (payload.type === 'allday-entry') {
+      const entry = entries.find(x => x.id === payload.entryId);
+      if (!entry || entry.date === dateStr) return;
+      updateEntry(payload.entryId, { date:dateStr });
     }
   };
 
-  // Click en celda → nueva entrada
-  const handleCellClick = (e, dateStr, dayEl) => {
+  const confirmMultiAllDayDrop = () => {
+    if (!pendingAllDayDrop) return;
+    pendingAllDayDrop.taskIds.forEach(taskId => {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      addEntry({ taskId:task.id, clientId:task.clientId, projectId:task.projectId, date:pendingAllDayDrop.dateStr, isAllDay:true, notes:'' });
+    });
+    setPendingAllDayDrop(null);
+  };
+
+  // Selección de entradas del calendario
+  const toggleEntrySelect = (entryId) => {
+    setSelectedEntryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
+  };
+
+  // Soltar entrada(s) en zona all-day → pedir confirmación
+  const handleEntryDropToAllDay = (entryId) => {
+    const idsToConvert = selectedEntryIds.has(entryId) && selectedEntryIds.size > 1
+      ? [...selectedEntryIds]
+      : [entryId];
+    setPendingEntryConvert({ entryIds: idsToConvert });
+  };
+
+  const confirmEntryConvert = () => {
+    if (!pendingEntryConvert) return;
+    pendingEntryConvert.entryIds.forEach(id => {
+      updateEntry(id, { isAllDay: true, startTime: null, endTime: null });
+    });
+    setSelectedEntryIds(new Set());
+    setPendingEntryConvert(null);
+  };
+
+  // Multi-drag helpers — mover todas las entradas seleccionadas junto a la que se arrastra
+  const handleMultiDragSync = useCallback((exceptId, dx, dy, snapH) => {
+    if (selectedEntryIds.size <= 1) return;
+    selectedEntryIds.forEach(id => {
+      if (id === exceptId) return;
+      const el = entryRefs.current.get(id);
+      if (!el) return;
+      el.style.transform = `translate(${Math.round(dx / colWidth) * colWidth}px, ${Math.round(dy / snapH) * snapH}px)`;
+      el.style.opacity = '0.75'; el.style.zIndex = '50';
+    });
+  }, [selectedEntryIds, colWidth]);
+
+  const handleMultiDragReset = useCallback((exceptId) => {
+    selectedEntryIds.forEach(id => {
+      if (id === exceptId) return;
+      const el = entryRefs.current.get(id);
+      if (!el) return;
+      el.style.transform = ''; el.style.opacity = ''; el.style.zIndex = '';
+    });
+  }, [selectedEntryIds]);
+
+  const handleMultiDragCommit = useCallback((exceptId, colDelta, snapDy) => {
+    if (selectedEntryIds.size <= 1) return;
+    selectedEntryIds.forEach(id => {
+      if (id === exceptId) return;
+      const entry = entries.find(e => e.id === id);
+      if (!entry || !entry.startTime || !entry.endTime) return;
+      const dIdx = weekDays.findIndex(d => format(d, 'yyyy-MM-dd') === entry.date);
+      if (dIdx === -1) return;
+      const [sh, sm] = entry.startTime.split(':').map(Number);
+      const [eh, em] = entry.endTime.split(':').map(Number);
+      const durMin = (eh*60+em) - (sh*60+sm);
+      const newStart = (sh*60+sm) + snapDy;
+      const newDay = Math.max(0, Math.min(weekDays.length-1, dIdx+colDelta));
+      updateEntry(id, { date:format(weekDays[newDay],'yyyy-MM-dd'), startTime:minsToTime(newStart), endTime:minsToTime(newStart+durMin) });
+      const el = entryRefs.current.get(id);
+      if (el) { el.style.transform = ''; el.style.opacity = ''; el.style.zIndex = ''; }
+    });
+  }, [selectedEntryIds, entries, weekDays, updateEntry]);
+
+  // MouseDown en celda: click crea entrada con 1h, drag dibuja rango → formulario
+  const handleCellMouseDown = (e, dateStr, colIdx, dayEl) => {
+    if (e.button !== 0) return;
     if (e.target.closest('.event-block-inner') || e.target.closest('.resize-handle-top') || e.target.closest('.resize-handle-bottom')) return;
-    const relY = e.clientY - dayEl.getBoundingClientRect().top; // dayEl starts at HEADER_H already
-    const startTime = minsToTime(Math.max(0, Math.round(relY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
-    const [h, m]    = startTime.split(':').map(Number);
-    setEntryModal({ date:dateStr, startTime, endTime: minsToTime(h*60+m+60) });
+    e.preventDefault();
+    const rect = dayEl.getBoundingClientRect();
+    const startRelY = e.clientY - rect.top;
+    let endRelY = startRelY;
+    let hasMoved = false;
+
+    const onMove = (mv) => {
+      const newEnd = mv.clientY - rect.top;
+      if (!hasMoved && Math.abs(newEnd - startRelY) > 15) hasMoved = true;
+      endRelY = newEnd;
+      if (hasMoved) setDragCreate({ colIdx, dateStr, startRelY, endRelY });
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setDragCreate(null);
+      const minY = Math.min(startRelY, endRelY);
+      const maxY = Math.max(startRelY, endRelY);
+      if (hasMoved) {
+        const st = minsToTime(Math.max(0, Math.round(minY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
+        const et = minsToTime(Math.max(MINUTE_SNAP, Math.round(maxY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
+        const [sh,sm] = st.split(':').map(Number);
+        const [eh,em] = et.split(':').map(Number);
+        setEntryModal({ date:dateStr, startTime:st, endTime: (eh*60+em) > (sh*60+sm) ? et : minsToTime(sh*60+sm+MINUTE_SNAP) });
+      } else {
+        const st = minsToTime(Math.max(0, Math.round(startRelY / (pxPerHour/60) / MINUTE_SNAP) * MINUTE_SNAP));
+        const [h,m] = st.split(':').map(Number);
+        setEntryModal({ date:dateStr, startTime:st, endTime:minsToTime(h*60+m+60) });
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   };
 
   const handleContextMenu = (e, entry) => { e.preventDefault(); setContextMenu({ x:e.clientX, y:e.clientY, entry }); };
@@ -655,16 +841,22 @@ const WeeklyCalendar = () => {
                 })}
               </div>
               {/* Fila 2: tareas del día */}
-              <div style={{ display:'flex', height:ALL_DAY_H }}>
+              <div style={{ display:'flex', height:ALL_DAY_H }}
+                onMouseEnter={() => { isOverAlldayRef.current = true; }}
+                onMouseLeave={() => { isOverAlldayRef.current = false; }}>
                 {weekDays.map((date) => {
                   const ds = format(date,'yyyy-MM-dd');
                   const allDayForDay = weekAllDayEntries.filter(e => e.date === ds);
                   return (
                     <div key={ds}
+                      className="allday-scroll"
+                      data-date={ds}
                       style={{ width:colWidth, flexShrink:0, borderRight:'1px solid var(--border-subtle)',
-                        display:'flex', alignItems:'center', gap:3, padding:'0 4px', overflow:'hidden',
+                        display:'flex', alignItems:'center', gap:3, padding:'0 4px',
+                        overflowX:'auto', overflowY:'hidden',
                         cursor:'pointer', boxSizing:'border-box' }}
                       onClick={() => setEntryModal({ date:ds, isAllDay:true })}
+                      onWheel={e => { if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.stopPropagation(); e.currentTarget.scrollLeft += e.deltaX; } }}
                       onDragOver={handleDragOver}
                       onDrop={e => handleDropAllDay(e, ds)}>
                       {allDayForDay.map(e => {
@@ -672,12 +864,13 @@ const WeeklyCalendar = () => {
                         const col = getEntryColor(e);
                         return (
                           <div key={e.id}
+                            draggable
+                            onDragStart={ev => { ev.stopPropagation(); ev.dataTransfer.setData('application/json', JSON.stringify({ type:'allday-entry', entryId:e.id })); ev.dataTransfer.effectAllowed='move'; }}
                             onClick={ev => { ev.stopPropagation(); setEntryModal({ entry:e }); }}
                             title={t?.title || 'Tarea del día'}
                             style={{ fontSize:10, padding:'1px 5px', borderRadius:3, background:col,
                               color: luminance(col) > 0.45 ? '#111' : '#fff',
-                              whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                              maxWidth: colWidth - 16, cursor:'pointer', fontWeight:500, flexShrink:0 }}>
+                              whiteSpace:'nowrap', cursor:'grab', fontWeight:500, flexShrink:0 }}>
                             {t?.title || 'Tarea del día'}
                           </div>
                         );
@@ -699,7 +892,7 @@ const WeeklyCalendar = () => {
                   style={{ position:'absolute', left:colIdx*colWidth, top:HEADER_H, width:colWidth, height:24*pxPerHour, cursor:'crosshair', borderRight:'1px solid var(--border-subtle)', zIndex:2 }}
                   onDragOver={handleDragOver}
                   onDrop={e => handleDrop(e, ds, e.currentTarget)}
-                  onClick={e => handleCellClick(e, ds, e.currentTarget)}
+                  onMouseDown={e => handleCellMouseDown(e, ds, colIdx, e.currentTarget)}
                 />
               );
             })}
@@ -738,9 +931,28 @@ const WeeklyCalendar = () => {
                     pxPerHour={pxPerHour}
                     onContextMenu={handleContextMenu}
                     onOpenEdit={(entry) => setEntryModal({ entry })}
+                    isSelected={selectedEntryIds.has(e.id)}
+                    onSelect={toggleEntrySelect}
+                    onDropToAllDay={handleEntryDropToAllDay}
+                    registerRef={registerEntryRef}
+                    onMultiDragSync={handleMultiDragSync}
+                    onMultiDragReset={handleMultiDragReset}
+                    onMultiDragCommit={handleMultiDragCommit}
                   />
                 </div>
               ))}
+              {/* Rectángulo visual de drag-to-create */}
+              {dragCreate && (() => {
+                const top  = HEADER_H + Math.min(dragCreate.startRelY, dragCreate.endRelY);
+                const h    = Math.abs(dragCreate.endRelY - dragCreate.startRelY);
+                return (
+                  <div style={{ position:'absolute', pointerEvents:'none', zIndex:20,
+                    left: dragCreate.colIdx * colWidth + 2,
+                    top, width: colWidth - 4, height: Math.max(h, 4),
+                    background:'rgba(74,144,217,0.18)', border:'2px solid var(--accent-blue)',
+                    borderRadius:'var(--radius-sm)' }}/>
+                );
+              })()}
             </div>
 
           </div>
@@ -769,6 +981,81 @@ const WeeklyCalendar = () => {
         <ContextMenu {...contextMenu}
           onEdit={() => { setEntryModal({ entry:contextMenu.entry }); setContextMenu(null); }}
           onClose={() => setContextMenu(null)}/>
+      )}
+
+      {/* Confirmación: soltar múltiples tareas en zona all-day */}
+      {pendingAllDayDrop && (
+        <div className="modal-overlay" onClick={() => setPendingAllDayDrop(null)}>
+          <div className="modal" style={{ maxWidth:380 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize:15, fontWeight:600 }}>Confirmar acción</h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setPendingAllDayDrop(null)}><X size={16}/></button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.5 }}>
+                ¿Agregar <strong style={{ color:'var(--text-primary)' }}>{pendingAllDayDrop.taskIds.length} tareas</strong> como
+                {' '}<strong style={{ color:'var(--accent-blue)' }}>Tarea del día</strong> para el{' '}
+                <strong style={{ color:'var(--text-primary)' }}>{pendingAllDayDrop.dateStr}</strong>?
+              </p>
+              <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:3 }}>
+                {pendingAllDayDrop.taskIds.map(id => {
+                  const t = tasks.find(x => x.id === id);
+                  return t ? (
+                    <span key={id} style={{ fontSize:12, color:'var(--text-secondary)',
+                      padding:'2px 6px', background:'var(--surface-2)', borderRadius:'var(--radius-xs)',
+                      borderLeft:`3px solid ${t.color || 'var(--accent-blue)'}` }}>
+                      {t.title}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setPendingAllDayDrop(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={confirmMultiAllDayDrop}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmación: convertir entradas con hora a todo el día */}
+      {pendingEntryConvert && (
+        <div className="modal-overlay" onClick={() => setPendingEntryConvert(null)}>
+          <div className="modal" style={{ maxWidth:380 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize:15, fontWeight:600 }}>Convertir a tarea del día</h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setPendingEntryConvert(null)}><X size={16}/></button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.5 }}>
+                {pendingEntryConvert.entryIds.length === 1
+                  ? 'Esta entrada tiene hora específica. ¿Convertirla a tarea del día?'
+                  : `Estas ${pendingEntryConvert.entryIds.length} entradas tienen hora específica. ¿Convertirlas a tareas del día?`}
+              </p>
+              <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:3 }}>
+                {pendingEntryConvert.entryIds.map(id => {
+                  const en = entries.find(x => x.id === id);
+                  const t  = en ? tasks.find(x => x.id === en.taskId) : null;
+                  return en ? (
+                    <span key={id} style={{ fontSize:12, color:'var(--text-secondary)',
+                      padding:'2px 8px', background:'var(--surface-2)', borderRadius:'var(--radius-xs)',
+                      display:'flex', justifyContent:'space-between' }}>
+                      <span>{t?.title || 'Actividad'}</span>
+                      <span style={{ opacity:0.6 }}>{en.startTime}–{en.endTime}</span>
+                    </span>
+                  ) : null;
+                })}
+              </div>
+              <p style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:8 }}>
+                Se eliminarán las horas específicas.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setPendingEntryConvert(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={confirmEntryConvert}>Convertir</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -21,9 +21,10 @@ const TaskModal = ({ onClose, editTask }) => {
         projectId:   editTask.projectId   || '',
         color:       editTask.color       || PALETTE[0],
         colorOverride: !!editTask.colorOverride, // si el user eligió color manualmente
+        isAllDay:    !!editTask.isAllDay,
       };
     }
-    return { title:'', description:'', clientId:'', projectId:'', color: PALETTE[0], colorOverride: false };
+    return { title:'', description:'', clientId:'', projectId:'', color: PALETTE[0], colorOverride: false, isAllDay: false };
   });
 
   const availableProjects = getProjectsByClient(form.clientId);
@@ -37,7 +38,7 @@ const TaskModal = ({ onClose, editTask }) => {
       const client = clients.find(c => c.id === form.clientId);
       if (client?.color) setForm(f => ({ ...f, color: client.color }));
     }
-  }, [form.projectId, form.clientId]);
+  }, [form.projectId, form.clientId, form.colorOverride]);
 
   // ESC cierra — #6
   useEffect(() => {
@@ -48,7 +49,7 @@ const TaskModal = ({ onClose, editTask }) => {
 
   const handleSave = () => {
     if (!form.title.trim()) return;
-    const data = { title:form.title, description:form.description, clientId:form.clientId, projectId:form.projectId, color:form.color, colorOverride:form.colorOverride };
+    const data = { title:form.title, description:form.description, clientId:form.clientId, projectId:form.projectId, color:form.color, colorOverride:form.colorOverride, isAllDay:form.isAllDay };
     if (editTask) updateTask(editTask.id, data);
     else addTask(data);
     onClose();
@@ -94,6 +95,35 @@ const TaskModal = ({ onClose, editTask }) => {
               value={form.description} onChange={e => setForm(f => ({...f, description:e.target.value}))}/>
           </div>
 
+          <div className="form-group">
+            <div style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 10px',
+              background:'var(--surface-1)', borderRadius:'var(--radius-sm)', marginBottom:4 }}>
+              <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', flex:1, userSelect:'none' }}>
+                <div
+                  onClick={() => setForm(f => ({ ...f, isAllDay: !f.isAllDay }))}
+                  style={{
+                    width:32, height:18, borderRadius:9, cursor:'pointer', flexShrink:0,
+                    background: form.isAllDay ? 'var(--accent-blue)' : 'var(--border-default)',
+                    position:'relative', transition:'background .2s',
+                  }}>
+                  <div style={{
+                    position:'absolute', top:2, left: form.isAllDay ? 16 : 2,
+                    width:14, height:14, borderRadius:'50%', background:'#fff',
+                    transition:'left .2s', boxShadow:'0 1px 2px rgba(0,0,0,0.2)',
+                  }}/>
+                </div>
+                <span style={{ fontSize:13, color:'var(--text-primary)', fontWeight: form.isAllDay ? 600 : 400 }}>
+                  Tarea de todo el día
+                </span>
+              </label>
+              {form.isAllDay && (
+                <span style={{ fontSize:10, color:'var(--accent-blue)', fontWeight:500 }}>
+                  PREDETERMINADO
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* Color: muestra el color heredado + opción de personalizar — #4 */}
           <div className="form-group">
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
@@ -136,7 +166,7 @@ const TaskModal = ({ onClose, editTask }) => {
 /* ────────────────────────────────────────────────────────────────────────────
    Ítem de Tarea en el Sidebar
 ──────────────────────────────────────────────────────────────────────────── */
-const TaskItem = ({ task, onEdit, onEditSubtask }) => {
+const TaskItem = ({ task, onEdit, onEditSubtask, isSelected, onSelect, selectedIds }) => {
   const { addSubtask, updateSubtask, toggleSubtask, removeSubtask, removeTask, getClient, getProject, updateTask } = useApp();
   const [expanded, setExpanded]   = useState(false);
   const [newSubtask, setNewSubtask] = useState('');
@@ -149,8 +179,13 @@ const TaskItem = ({ task, onEdit, onEditSubtask }) => {
   const totalCount = subtasks.length;
 
   // Drag de la TAREA completa al calendario
+  // Si hay múltiples seleccionadas y esta está en la selección, arrastra todas
   const handleTaskDragStart = (e) => {
-    e.dataTransfer.setData('application/json', JSON.stringify({ type:'task', taskId:task.id }));
+    if (isSelected && selectedIds && selectedIds.size > 1) {
+      e.dataTransfer.setData('application/json', JSON.stringify({ type:'tasks', taskIds:[...selectedIds] }));
+    } else {
+      e.dataTransfer.setData('application/json', JSON.stringify({ type:'task', taskId:task.id }));
+    }
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -173,14 +208,15 @@ const TaskItem = ({ task, onEdit, onEditSubtask }) => {
 
   return (
     <div
-      className={`task-item${task.status==='done'?' is-done':''}`}
+      className={`task-item${task.status==='done'?' is-done':''}${isSelected?' task-selected':''}`}
       style={{ borderLeftColor: task.color || 'transparent' }}
       draggable
       onDragStart={handleTaskDragStart}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={() => onSelect && onSelect(task.id)}
       onDoubleClick={(e) => { e.stopPropagation(); onEdit(task); }}
-      title="Doble clic para editar"
+      title="Clic para seleccionar · Doble clic para editar"
     >
       {/* ─── Fila principal ─── */}
       <div className="flex-row gap-2" style={{ justifyContent:'space-between' }}>
@@ -318,6 +354,16 @@ const Sidebar = () => {
   const [filter, setFilter]                 = useState('all');
   const [collapsed, setCollapsed]           = useState(false);
   const [showClientPanel, setShowClientPanel] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
+
+  const toggleSelect = (taskId) => {
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
 
   // Subtask Edit Input State
   const [stEditTitle, setStEditTitle] = useState('');
@@ -399,9 +445,24 @@ const Sidebar = () => {
             ))}
           </div>
           <div className="divider" style={{ margin:'4px 0' }}/>
-          <p className="text-micro" style={{ padding:'4px 16px', opacity:0.6 }}>
-            Arrastra tareas o subtareas al calendario
-          </p>
+
+          {selectedTaskIds.size > 0 ? (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+              padding:'5px 12px', background:'var(--surface-2)', borderBottom:'1px solid var(--border-subtle)',
+              flexShrink:0 }}>
+              <span style={{ fontSize:11, color:'var(--accent-blue)', fontWeight:600 }}>
+                {selectedTaskIds.size} seleccionada{selectedTaskIds.size > 1 ? 's' : ''}
+              </span>
+              <button className="btn btn-ghost btn-sm" style={{ fontSize:10, padding:'2px 6px' }}
+                onClick={() => setSelectedTaskIds(new Set())}>
+                Limpiar
+              </button>
+            </div>
+          ) : (
+            <p className="text-micro" style={{ padding:'4px 16px', opacity:0.6 }}>
+              Clic para seleccionar · Arrastra al calendario
+            </p>
+          )}
 
           <div className="sidebar-content">
             {filtered.length === 0 ? (
@@ -414,7 +475,10 @@ const Sidebar = () => {
             ) : filtered.map(t => (
               <TaskItem key={t.id} task={t}
                 onEdit={task => { setEditingTask(task); setShowModal(true); }}
-                onEditSubtask={(task, subtask) => setEditingSubtask({ task, subtask })}/>
+                onEditSubtask={(task, subtask) => setEditingSubtask({ task, subtask })}
+                isSelected={selectedTaskIds.has(t.id)}
+                onSelect={toggleSelect}
+                selectedIds={selectedTaskIds}/>
             ))}
           </div>
         </>

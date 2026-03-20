@@ -40,6 +40,19 @@ const EntryModal = ({ data, onClose }) => {
   });
 
   const projects = getProjectsByClient(form.clientId);
+  
+  // Filtrar tareas que no estén completadas
+  const activeTasks = tasks.filter(t => t.status !== 'done');
+  
+  // Ordenar tareas: si está activado 'Todo el día', poner arriba las que ya están configuradas así
+  const sortedTasks = [...activeTasks].sort((a, b) => {
+    if (form.isAllDay) {
+      if (a.isAllDay && !b.isAllDay) return -1;
+      if (!a.isAllDay && b.isAllDay) return 1;
+    }
+    return a.title.localeCompare(b.title);
+  });
+
   const selectedTask = tasks.find(t => t.id === form.taskId);
   const taskSubtasks = selectedTask?.subtasks || [];
 
@@ -51,6 +64,7 @@ const EntryModal = ({ data, onClose }) => {
       subtaskId: '',
       clientId:  task?.clientId  || p.clientId,
       projectId: task?.projectId || p.projectId,
+      isAllDay:  task?.isAllDay  || p.isAllDay, // Si la tarea ya es "todo el día", activamos el toggle
     }));
   };
 
@@ -122,7 +136,7 @@ const EntryModal = ({ data, onClose }) => {
             <label className="form-label">Tarea</label>
             <select className="input" value={form.taskId} onChange={e => handleTaskChange(e.target.value)}>
               <option value="">— Sin tarea específica —</option>
-              {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+              {sortedTasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
             </select>
           </div>
 
