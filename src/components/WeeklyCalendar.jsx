@@ -340,7 +340,7 @@ const MonthView = ({ currentDate, entries, tasks, onDayClick }) => {
 /* ════════════════════════════════════════════════════════════════════════════
    Vista Diaria
 ════════════════════════════════════════════════════════════════════════════ */
-const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpenEdit, onOpenAllDay, onDropAllDay, onDropToAllDay }) => {
+const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpenEdit, onOpenAllDay, onDropAllDay, onDropToAllDay, onDayClick, selectedEntryIds, onSelect, registerRef, onMultiDragSync, onMultiDragReset, onMultiDragCommit }) => {
   const scrollRef = useRef(null);
   const [nowY, setNowY] = useState(0);
   const { getEntryColor, updateEntry } = useApp();
@@ -371,42 +371,45 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
         </div>
       </div>
       <div style={{ flex:1, position:'relative' }}>
-        {/* Etiqueta del día */}
-        <div className={`day-header${dateStr===todayStr?' today':''}`}
-          style={{ height:DAY_LABEL_H, display:'flex', flexDirection:'row', alignItems:'center', gap:10, padding:'0 16px', justifyContent:'flex-start', textAlign:'left', borderBottom:'1px solid var(--border-subtle)' }}>
-          <span className="day-label">{format(currentDate,'EEEE',{locale:es}).toUpperCase()}</span>
-          <span style={{ fontSize:22, fontWeight:700 }}>{format(currentDate,'d')}</span>
-          <span className="day-label">{format(currentDate,'MMMM yyyy',{locale:es})}</span>
-        </div>
-        {/* Fila all-day */}
-        <div className="allday-scroll"
-          data-date={dateStr}
-          style={{ height:ALL_DAY_H, display:'flex', alignItems:'center', gap:4, padding:'0 8px',
-          borderBottom:'1px solid var(--border-subtle)', cursor:'pointer', overflowX:'auto', overflowY:'hidden', flexWrap:'nowrap' }}
-          onClick={() => onOpenAllDay && onOpenAllDay(dateStr)}
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => { e.preventDefault(); onDropAllDay && onDropAllDay(e, dateStr); }}
-          onWheel={e => { if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.stopPropagation(); e.currentTarget.scrollLeft += e.deltaX; } }}>
-          {allDayEntries.map(e => {
-            const t = tasks.find(x => x.id === e.taskId);
-            const col = getEntryColor(e);
-            return (
-              <div key={e.id}
-                draggable
-                onDragStart={ev => { ev.stopPropagation(); ev.dataTransfer.setData('application/json', JSON.stringify({ type:'allday-entry', entryId:e.id })); ev.dataTransfer.effectAllowed='move'; }}
-                onClick={ev => { ev.stopPropagation(); onOpenEdit && onOpenEdit(e); }}
-                title={t?.title || 'Tarea del día'}
-                style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:col,
-                  color: luminance(col) > 0.45 ? '#111' : '#fff',
-                  whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                  cursor:'grab', fontWeight:500, flexShrink:0 }}>
-                {t?.title || 'Tarea del día'}
-              </div>
-            );
-          })}
-          {allDayEntries.length === 0 && (
-            <span style={{ fontSize:11, color:'var(--text-tertiary)', opacity:0.4 }}>+ Tarea del día</span>
-          )}
+        {/* Header sticky: etiqueta del día + fila all-day */}
+        <div style={{ position:'sticky', top:0, zIndex:20, background:'var(--bg-primary)' }}>
+          <div className={`day-header${dateStr===todayStr?' today':''}`}
+            style={{ height:DAY_LABEL_H, display:'flex', flexDirection:'row', alignItems:'center', gap:10, padding:'0 16px', justifyContent:'flex-start', textAlign:'left', borderBottom:'1px solid var(--border-subtle)', cursor:'pointer' }}
+            onClick={() => onDayClick && onDayClick(dateStr)}
+            title="Ver resumen del día">
+            <span className="day-label">{format(currentDate,'EEEE',{locale:es}).toUpperCase()}</span>
+            <span style={{ fontSize:22, fontWeight:700 }}>{format(currentDate,'d')}</span>
+            <span className="day-label">{format(currentDate,'MMMM yyyy',{locale:es})}</span>
+          </div>
+          <div className="allday-scroll"
+            data-date={dateStr}
+            style={{ height:ALL_DAY_H, display:'flex', alignItems:'center', gap:4, padding:'0 8px',
+            borderBottom:'1px solid var(--border-subtle)', cursor:'pointer', overflowX:'auto', overflowY:'hidden', flexWrap:'nowrap' }}
+            onClick={() => onOpenAllDay && onOpenAllDay(dateStr)}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); onDropAllDay && onDropAllDay(e, dateStr); }}
+            onWheel={e => { if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.stopPropagation(); e.currentTarget.scrollLeft += e.deltaX; } }}>
+            {allDayEntries.map(e => {
+              const t = tasks.find(x => x.id === e.taskId);
+              const col = getEntryColor(e);
+              return (
+                <div key={e.id}
+                  draggable
+                  onDragStart={ev => { ev.stopPropagation(); ev.dataTransfer.setData('application/json', JSON.stringify({ type:'allday-entry', entryId:e.id })); ev.dataTransfer.effectAllowed='move'; }}
+                  onClick={ev => { ev.stopPropagation(); onOpenEdit && onOpenEdit(e); }}
+                  title={t?.title || 'Tarea del día'}
+                  style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:col,
+                    color: luminance(col) > 0.45 ? '#111' : '#fff',
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                    cursor:'grab', fontWeight:500, flexShrink:0 }}>
+                  {t?.title || 'Tarea del día'}
+                </div>
+              );
+            })}
+            {allDayEntries.length === 0 && (
+              <span style={{ fontSize:11, color:'var(--text-tertiary)', opacity:0.4 }}>+ Tarea del día</span>
+            )}
+          </div>
         </div>
         <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, pointerEvents:'none' }}>
           {Array.from({length:24}).map((_,h)=>(
@@ -424,7 +427,13 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
         {dayEntries.map(e=>(
           <EventBlock key={e.id} entry={e} colWidth={Math.max(200,800)} weekDays={singleWeek}
             pxPerHour={pxPerHour} onContextMenu={onContextMenu} onOpenEdit={onOpenEdit}
-            onDropToAllDay={onDropToAllDay}/>
+            onDropToAllDay={onDropToAllDay}
+            isSelected={selectedEntryIds?.has(e.id)}
+            onSelect={onSelect}
+            registerRef={registerRef}
+            onMultiDragSync={onMultiDragSync}
+            onMultiDragReset={onMultiDragReset}
+            onMultiDragCommit={onMultiDragCommit}/>
         ))}
         <div style={{ position:'absolute', top:HEADER_H, left:0, right:0, height:24*pxPerHour, zIndex:1 }}
           onDragOver={e => e.preventDefault()}
@@ -980,7 +989,14 @@ const WeeklyCalendar = () => {
           onOpenEdit={(entry) => setEntryModal({ entry })}
           onOpenAllDay={(ds) => setEntryModal({ date:ds, isAllDay:true })}
           onDropAllDay={handleDropAllDay}
-          onDropToAllDay={handleEntryDropToAllDay}/>
+          onDropToAllDay={handleEntryDropToAllDay}
+          onDayClick={ds => setSummaryDate(ds)}
+          selectedEntryIds={selectedEntryIds}
+          onSelect={toggleEntrySelect}
+          registerRef={registerEntryRef}
+          onMultiDragSync={handleMultiDragSync}
+          onMultiDragReset={handleMultiDragReset}
+          onMultiDragCommit={handleMultiDragCommit}/>
       )}
 
       {/* ══ VISTA MENSUAL ══════════════════════════════════════════════════ */}

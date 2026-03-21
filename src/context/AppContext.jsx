@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { startOfMonth, endOfMonth, subMonths, addMonths, format } from 'date-fns'
 import { useAuth } from './AuthContext'
+import { usePlan } from '../hooks/usePlan'
 import * as db from '../lib/db'
 import { toCamel, normalizeEntry } from '../lib/db'
 import { supabase } from '../lib/supabase'
@@ -12,9 +13,12 @@ const load = (key, def) => {
   try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : def } catch { return def }
 }
 
+const FREE_LIMITS = { clients: 3, projects: 5 }
+
 export const AppProvider = ({ children }) => {
   const { user } = useAuth()
   const userId = user?.id
+  const { plan, isFree } = usePlan()
 
   // ── Tema (local por dispositivo) ──────────────────────────────────────────
   const [theme, setTheme] = useState(() => load('ct_theme', 'dark'))
@@ -120,6 +124,9 @@ export const AppProvider = ({ children }) => {
 
   // ── CLIENTES ──────────────────────────────────────────────────────────────
   const addClient = async (name, color = '#3B82F6') => {
+    if (isFree && clients.length >= FREE_LIMITS.clients) {
+      return { error: 'LIMIT_REACHED', limitType: 'clients' }
+    }
     const c = await db.clients.create({ name, color, userId })
     return c
   }
@@ -137,6 +144,9 @@ export const AppProvider = ({ children }) => {
 
   // ── PROYECTOS ─────────────────────────────────────────────────────────────
   const addProject = async (clientId, name, color = '#6366F1') => {
+    if (isFree && projects.length >= FREE_LIMITS.projects) {
+      return { error: 'LIMIT_REACHED', limitType: 'projects' }
+    }
     const p = await db.projects.create({ clientId, name, color, userId })
     return p
   }
@@ -326,6 +336,9 @@ export const AppProvider = ({ children }) => {
       theme, setTheme,
       isMobileSidebarOpen, setIsMobileSidebarOpen,
       dataLoading,
+      plan, isFree, FREE_LIMITS,
+      canAddClient: !isFree || clients.length < FREE_LIMITS.clients,
+      canAddProject: !isFree || projects.length < FREE_LIMITS.projects,
       clients, addClient, updateClient, removeClient,
       projects, addProject, updateProject, removeProject,
       tasks, addTask, updateTask, removeTask,

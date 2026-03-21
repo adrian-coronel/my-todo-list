@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Sun, Moon, SunMedium, X, Plus, Trash2, Menu, LogOut } from 'lucide-react';
+import { Sun, Moon, SunMedium, X, Plus, Trash2, Menu, LogOut, FileBarChart, Sparkles } from 'lucide-react';
+import UpgradeModal from './UpgradeModal';
+import ReportModal from './ReportModal';
 
 const PREDEFINED_COLORS = [
   '#ef4444', '#f87171', '#dc2626', '#f97316', '#fb923c', '#ea580c',
@@ -14,11 +16,12 @@ const PREDEFINED_COLORS = [
 
 /* ── Panel de Configuración: Clientes y Proyectos ─────────────────────────── */
 export const SettingsPanel = ({ onClose }) => {
-  const { clients, projects, addClient, removeClient, updateClient, addProject, removeProject, updateProject, getProjectsByClient } = useApp();
+  const { clients, projects, addClient, removeClient, updateClient, addProject, removeProject, updateProject, getProjectsByClient, isFree, canAddClient, canAddProject, FREE_LIMITS } = useApp();
   const [newClient, setNewClient]   = useState('');
   const [selectedClient, setSelectedClient] = useState('');
   const [newProject, setNewProject] = useState('');
   const [pickerTarget, setPickerTarget] = useState(null); // { id, type, color, x, y }
+  const [upgradeReason, setUpgradeReason] = useState(null);
 
   const COLORS = ['#4A90D9','#7B68EE','#4CAF89','#F0A500','#E05C5C','#00BCD4'];
 
@@ -33,12 +36,22 @@ export const SettingsPanel = ({ onClose }) => {
         <div className="modal-body" style={{ gap:16 }}>
           {/* Crear cliente */}
           <div>
-            <label className="form-label">Nuevo Cliente</label>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <label className="form-label">Nuevo Cliente</label>
+              {isFree && <span className="text-micro" style={{ color: canAddClient ? 'var(--text-tertiary)' : 'var(--accent-amber)' }}>{clients.length} de {FREE_LIMITS.clients}</span>}
+            </div>
             <div className="flex-row-responsive" style={{ marginTop:4 }}>
-              <input className="input" style={{flex:1}} placeholder="Ej. Acme Corp"
+              <input className="input" style={{flex:1, opacity: canAddClient ? 1 : 0.5}} placeholder="Ej. Acme Corp"
+                disabled={!canAddClient}
                 value={newClient} onChange={e => setNewClient(e.target.value)}
-                onKeyDown={e => { if(e.key==='Enter' && newClient.trim()) { addClient(newClient.trim(), PREDEFINED_COLORS[clients.length%PREDEFINED_COLORS.length]); setNewClient(''); }}}/>
-              <button className="btn btn-primary" onClick={() => { if(newClient.trim()){ addClient(newClient.trim(), PREDEFINED_COLORS[clients.length%PREDEFINED_COLORS.length]); setNewClient(''); }}}>
+                onKeyDown={e => { if(e.key==='Enter' && newClient.trim()) {
+                  if(!canAddClient) { setUpgradeReason('clients'); return; }
+                  addClient(newClient.trim(), PREDEFINED_COLORS[clients.length%PREDEFINED_COLORS.length]); setNewClient('');
+                }}}/>
+              <button className="btn btn-primary" onClick={() => {
+                if(!canAddClient) { setUpgradeReason('clients'); return; }
+                if(newClient.trim()){ addClient(newClient.trim(), PREDEFINED_COLORS[clients.length%PREDEFINED_COLORS.length]); setNewClient(''); }
+              }}>
                 <Plus size={14}/> Agregar
               </button>
             </div>
@@ -50,7 +63,7 @@ export const SettingsPanel = ({ onClose }) => {
               <label className="form-label" style={{ display:'block', marginBottom:6 }}>Clientes registrados</label>
               {clients.map(c => (
                 <div key={c.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:'1px solid var(--border-subtle)' }}>
-                  <div title="Cambiar color del cliente" 
+                  <div title="Cambiar color del cliente"
                        onClick={(e) => {
                          const rect = e.currentTarget.getBoundingClientRect();
                          setPickerTarget({ id: c.id, type: 'client', color: c.color, x: rect.left, y: rect.bottom + 4 });
@@ -58,6 +71,11 @@ export const SettingsPanel = ({ onClose }) => {
                        style={{ width:12, height:12, borderRadius:2, background:c.color, cursor:'pointer', flexShrink:0 }} />
                   <input value={c.name} onChange={e => updateClient(c.id, { name: e.target.value })} title="Editar nombre de cliente"
                     style={{ flex:1, fontSize:13, background:'transparent', border:'none', color:'var(--text-primary)', outline:'none', fontWeight:500 }} />
+                  <input type="number" min="0" step="0.01" placeholder="$/h"
+                    value={c.hourlyRate ?? ''} onChange={e => updateClient(c.id, { hourlyRate: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                    title="Tarifa por hora"
+                    style={{ width:60, fontSize:11, background:'var(--bg-tertiary)', border:'1px solid var(--border-subtle)', borderRadius:'var(--radius-xs)',
+                      color:'var(--text-secondary)', padding:'2px 6px', textAlign:'right', outline:'none' }} />
                   <span className="text-micro">{getProjectsByClient(c.id).length} proyecto(s)</span>
                   <button className="btn btn-ghost btn-icon btn-sm" style={{color:'var(--accent-red)'}} title="Eliminar cliente" onClick={() => removeClient(c.id)}>
                     <Trash2 size={13}/>
@@ -71,20 +89,28 @@ export const SettingsPanel = ({ onClose }) => {
 
           {/* Crear proyecto */}
           <div>
-            <label className="form-label">Nuevo Proyecto</label>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <label className="form-label">Nuevo Proyecto</label>
+              {isFree && <span className="text-micro" style={{ color: canAddProject ? 'var(--text-tertiary)' : 'var(--accent-amber)' }}>{projects.length} de {FREE_LIMITS.projects}</span>}
+            </div>
             <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:4 }}>
               <select className="input" value={selectedClient} onChange={e => setSelectedClient(e.target.value)}>
                 <option value="">Seleccionar cliente...</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <div className="flex-row-responsive">
-                <input className="input" style={{flex:1}} placeholder="Nombre del proyecto"
+                <input className="input" style={{flex:1, opacity: canAddProject ? 1 : 0.5}} placeholder="Nombre del proyecto"
+                  disabled={!canAddProject}
                   value={newProject} onChange={e => setNewProject(e.target.value)}
                   onKeyDown={e => { if(e.key==='Enter' && newProject.trim() && selectedClient){
+                    if(!canAddProject) { setUpgradeReason('projects'); return; }
                     addProject(selectedClient, newProject.trim()); setNewProject('');
                   }}}/>
                 <button className="btn btn-primary" disabled={!selectedClient}
-                  onClick={() => { if(newProject.trim() && selectedClient){ addProject(selectedClient, newProject.trim()); setNewProject(''); }}}>
+                  onClick={() => {
+                    if(!canAddProject) { setUpgradeReason('projects'); return; }
+                    if(newProject.trim() && selectedClient){ addProject(selectedClient, newProject.trim()); setNewProject(''); }
+                  }}>
                   <Plus size={14}/> Agregar
                 </button>
               </div>
@@ -124,6 +150,8 @@ export const SettingsPanel = ({ onClose }) => {
         </div>
       </div>
 
+      <UpgradeModal reason={upgradeReason} onClose={() => setUpgradeReason(null)} />
+
       {/* Popover de ColorPicker */}
       {pickerTarget && (
         <>
@@ -156,8 +184,10 @@ export const SettingsPanel = ({ onClose }) => {
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
 const AppHeader = () => {
-  const { theme, setTheme, setIsMobileSidebarOpen } = useApp();
+  const { theme, setTheme, setIsMobileSidebarOpen, isFree } = useApp();
   const { signOut } = useAuth();
+  const [showReport, setShowReport] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState(null);
 
   return (
     <header className="app-header">
@@ -172,6 +202,16 @@ const AppHeader = () => {
       </div>
 
       <div className="flex-row gap-2">
+        {isFree ? (
+          <button className="upgrade-pill" onClick={() => setUpgradeReason('reports')}>
+            <Sparkles size={14} />
+            <span>Prueba Pro</span>
+          </button>
+        ) : (
+          <button className="btn btn-ghost btn-icon" title="Reportes" onClick={() => setShowReport(true)}>
+            <FileBarChart size={16}/>
+          </button>
+        )}
         <button className="btn btn-ghost btn-icon"
           title={theme==='dark' ? 'Modo medio' : theme==='medium' ? 'Modo claro' : 'Modo oscuro'}
           onClick={() => setTheme(t => t==='dark' ? 'medium' : t==='medium' ? 'light' : 'dark')}>
@@ -181,6 +221,8 @@ const AppHeader = () => {
           <LogOut size={16}/>
         </button>
       </div>
+      {showReport && <ReportModal onClose={() => setShowReport(false)} />}
+      <UpgradeModal reason={upgradeReason} onClose={() => setUpgradeReason(null)} />
     </header>
   );
 };
