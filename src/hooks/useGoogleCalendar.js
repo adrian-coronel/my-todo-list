@@ -37,60 +37,45 @@ export function useGoogleCalendar() {
   }, [userId])
 
   // ── Detectar callback OAuth con scope de Calendar ──────────────────────────
-  // provider_refresh_token solo está presente cuando se pidió access_type:'offline'
-  // (nuestro flujo de Calendar OAuth), no en el login normal.
+  // IMPORTANTE: no hacer llamadas a supabase DB dentro del callback de
+  // onAuthStateChange directamente — causa deadlock con el lock interno de auth.
+  // Se usa setTimeout(0) para escapar del lock antes de consultar la DB.
   useEffect(() => {
     if (!userId) return
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (
-          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') &&
+          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') &&
           session?.provider_refresh_token
         ) {
           const tokenData = {
-            user_id:          userId,
+            user_id:          session.user.id,
             provider:         'google',
             access_token:     session.provider_token,
             refresh_token:    session.provider_refresh_token,
             token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
           }
-
-          // Verificar si ya existe la fila
-          const { data: existing } = await supabase
-            .from('user_integrations')
-            .select('id, sync_to_google, show_google_events')
-            .eq('user_id', userId)
-            .eq('provider', 'google')
-            .maybeSingle()
-
-          if (!existing) {
-            // Primera conexión: insertar con settings por defecto
-            const { data } = await supabase
-              .from('user_integrations')
-              .insert(tokenData)
-              .select()
-              .single()
-            setIntegration(data)
-          } else {
-            // Ya existe: solo actualizar tokens, preservar settings del usuario
-            const { data } = await supabase
-              .from('user_integrations')
-              .update({
-                access_token:     tokenData.access_token,
-                refresh_token:    tokenData.refresh_token,
-                token_expires_at: tokenData.token_expires_at,
-              })
-              .eq('user_id', userId)
-              .eq('provider', 'google')
-              .select()
-              .single()
-            setIntegration(data)
-          }
+          // Escapar del lock de auth antes de hacer queries a la DB
+          setTimeout(() => saveIntegration(tokenData), 0)
         }
       }
     )
     return () => subscription.unsubscribe()
   }, [userId])
+
+  // Persiste los tokens de Google en user_integrations (upsert)
+  const saveIntegration = useCallback(async (tokenData) => {
+    const { data, error } = await supabase
+      .from('user_integrations')
+      .upsert(tokenData, { onConflict: 'user_id,provider' })
+      .select()
+      .single()
+    if (error) {
+      console.error('[GCal] Error al guardar integración:', error)
+    } else {
+      setIntegration(data)
+    }
+  }, [])
 
   // ── Derivados ──────────────────────────────────────────────────────────────
   const isConnected      = !!integration
@@ -98,10 +83,12 @@ export function useGoogleCalendar() {
   const showGoogleEvents = integration?.show_google_events ?? true
 
   // ── Obtener access token fresco ────────────────────────────────────────────
-  const getAccessToken = useCallback(async () => {
-    const { data } = await supabase.auth.getSession()
-    return data?.session?.provider_token || null
-  }, [])
+  // Siempre usa el token guardado en user_integrations — es el único que
+  // garantiza tener el scope de calendar.events (fue guardado durante el
+  // OAuth de Calendar, no el login inicial de Google).
+  const getAccessToken = useCallback(() => {
+    return integration?.access_token || null
+  }, [integration])
 
   // ── Conectar: solicita scope de Calendar (incremental auth) ────────────────
   const connect = useCallback(async () => {
@@ -164,8 +151,8 @@ export function useGoogleCalendar() {
       const events = await fetchGoogleEvents(token, dateFrom, dateTo)
       setGoogleEvents(events)
     } catch (err) {
-      if (err?.status === 401) {
-        // Token expirado: intentar refrescar una vez
+      if (err?.status === 401 || err?.status === 403) {
+        // Token expirado o con scopes insuficientes: refrescar via Edge Function
         const newToken = await refreshGoogleToken(userId)
         if (!newToken) return
         try {

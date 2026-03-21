@@ -22,8 +22,11 @@ async function apiFetch(url, options) {
   const res = await fetch(url, options)
   if (res.status === 204) return null
   if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    console.error('[GCal] API error body:', JSON.stringify(body, null, 2))
     const err = new Error(`Google Calendar API error: ${res.status}`)
     err.status = res.status
+    err.body = body
     throw err
   }
   return res.json()
@@ -115,29 +118,18 @@ export async function deleteGoogleEvent(accessToken, googleEventId) {
 }
 
 /**
- * Refresca el provider_token de Google via supabase.auth.refreshSession().
- * Actualiza el token en user_integrations y retorna el nuevo access token.
- * Si no hay token fresco disponible, retorna null (el llamador debe pedir reconexión).
- *
- * Nota: en producción se recomienda un Edge Function para usar el
- * refresh_token directamente contra la API de Google (requiere client_secret).
+ * Refresca el access token de Google via Edge Function.
+ * La Edge Function usa el refresh_token + client_secret (server-side)
+ * para obtener un nuevo token sin exponer credenciales en el frontend.
  */
-export async function refreshGoogleToken(userId) {
+export async function refreshGoogleToken(_userId) {
   try {
-    const { data } = await supabase.auth.refreshSession()
-    const newToken = data?.session?.provider_token
-    if (!newToken) return null
-
-    await supabase
-      .from('user_integrations')
-      .update({
-        access_token:     newToken,
-        token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
-      })
-      .eq('user_id', userId)
-      .eq('provider', 'google')
-
-    return newToken
+    const { data, error } = await supabase.functions.invoke('refresh-google-token')
+    if (error) {
+      console.error('[GCal] refreshGoogleToken edge error:', error)
+      return null
+    }
+    return data?.access_token || null
   } catch (err) {
     console.error('[GCal] refreshGoogleToken:', err)
     return null
