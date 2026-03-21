@@ -41,7 +41,10 @@ export default function AuthScreen() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <img src="/logo_dark.png" alt="Kron" style={{ height: 25, width: 'auto', marginBottom: 4 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24, marginTop: 8 }}>
+          <img src="/favicon.png" alt="Kron Icon" style={{ height: 56, width: 56 }} />
+          {/* <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Kron</h2> */}
+        </div>
         <p className="auth-subtitle">
           {mode === 'login' ? 'Inicia sesión para continuar' : 'Crea tu cuenta'}
         </p>

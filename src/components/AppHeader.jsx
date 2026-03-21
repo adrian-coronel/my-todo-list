@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
-import { Sun, Moon, SunMedium, X, Plus, Trash2, Menu, LogOut, FileBarChart, Sparkles } from 'lucide-react';
+import { X, Plus, Trash2, Menu, FileBarChart, Sparkles } from 'lucide-react';
 import UpgradeModal from './UpgradeModal';
 import ReportModal from './ReportModal';
-import GoogleCalendarSettings from './GoogleCalendarSettings';
+import UserMenu from './UserMenu';
 
 const PREDEFINED_COLORS = [
   '#ef4444', '#f87171', '#dc2626', '#f97316', '#fb923c', '#ea580c',
@@ -149,8 +148,6 @@ export const SettingsPanel = ({ onClose }) => {
             </div>
           )}
 
-          <div className="divider"/>
-          <GoogleCalendarSettings />
         </div>
       </div>
 
@@ -188,8 +185,7 @@ export const SettingsPanel = ({ onClose }) => {
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
 const AppHeader = () => {
-  const { theme, setTheme, setIsMobileSidebarOpen, isFree } = useApp();
-  const { signOut } = useAuth();
+  const { theme, setIsMobileSidebarOpen, isFree } = useApp();
   const [showReport, setShowReport] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState(null);
   const logoSrc = theme === 'dark' ? '/logo_dark.png' : '/logo_whie_middle.png';
@@ -214,14 +210,7 @@ const AppHeader = () => {
             <FileBarChart size={16}/>
           </button>
         )}
-        <button className="btn btn-ghost btn-icon"
-          title={theme==='dark' ? 'Modo medio' : theme==='medium' ? 'Modo claro' : 'Modo oscuro'}
-          onClick={() => setTheme(t => t==='dark' ? 'medium' : t==='medium' ? 'light' : 'dark')}>
-          {theme === 'dark' ? <SunMedium size={16}/> : theme === 'medium' ? <Sun size={16}/> : <Moon size={16}/>}
-        </button>
-        <button className="btn btn-ghost btn-icon" title="Cerrar sesión" onClick={signOut}>
-          <LogOut size={16}/>
-        </button>
+        <UserMenu />
       </div>
       {showReport && <ReportModal onClose={() => setShowReport(false)} />}
       <UpgradeModal reason={upgradeReason} onClose={() => setUpgradeReason(null)} />

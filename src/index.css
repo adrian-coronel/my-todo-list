@@ -323,6 +323,137 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   USER MENU
+   ═══════════════════════════════════════════════════════════════ */
+.user-menu-trigger {
+  padding: 2px !important;
+  border-radius: 50% !important;
+  overflow: hidden;
+}
+.user-menu-trigger:hover { background: var(--bg-hover) !important; }
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 260px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 500;
+  overflow: hidden;
+  animation: menuFadeIn 120ms ease;
+}
+@keyframes menuFadeIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.user-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.user-menu-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 0;
+}
+
+.user-menu-section {
+  padding: 4px 0;
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.user-menu-item:hover,
+.user-menu-item.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.user-menu-item-upgrade {
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+.user-menu-item-upgrade:hover {
+  background: rgba(74,144,217,0.10);
+  color: var(--accent-blue);
+}
+
+.user-menu-item-danger { color: var(--accent-red); }
+.user-menu-item-danger:hover {
+  background: rgba(224,92,92,0.10);
+  color: var(--accent-red);
+}
+
+.user-menu-subsection {
+  padding: 8px 14px 4px;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Plan badges */
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.plan-badge-free {
+  background: var(--surface-3);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+}
+.plan-badge-pro {
+  background: rgba(123,104,238,0.18);
+  color: var(--accent-purple);
+  border: 1px solid rgba(123,104,238,0.35);
+}
+.plan-badge-lifetime {
+  background: rgba(240,165,0,0.18);
+  color: var(--accent-amber);
+  border: 1px solid rgba(240,165,0,0.35);
+}
+
+/* Mobile: full-width dropdown from top */
+@media (max-width: 600px) {
+  .user-menu-dropdown {
+    position: fixed;
+    top: 52px;
+    left: 0;
+    right: 0;
+    width: 100%;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    border-left: none;
+    border-right: none;
+    border-top: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    FORM ELEMENTS
    ═══════════════════════════════════════════════════════════════ */
 .form-group { display: flex; flex-direction: column; gap: 5px; }
