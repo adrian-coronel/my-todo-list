@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Plus, Check, ChevronDown, ChevronRight, X, PanelLeftClose, PanelRightClose, Briefcase } from 'lucide-react';
+import { Plus, Check, ChevronDown, ChevronRight, X, PanelLeftClose, PanelRightClose, Briefcase, Search, Lock, Building2, Folder, CalendarDays } from 'lucide-react';
 import { SettingsPanel } from './AppHeader';
+import UpgradeModal from './UpgradeModal';
 
 const PALETTE = ['#4A90D9','#7B68EE','#4CAF89','#F0A500','#E05C5C','#00BCD4','#E91E8C','#FF6B35'];
 
@@ -347,7 +348,7 @@ const TaskItem = React.memo(({ task, onEdit, onEditSubtask, isSelected, onSelect
    Sidebar Principal
 ──────────────────────────────────────────────────────────────────────────── */
 const Sidebar = () => {
-  const { tasks, updateSubtask, isMobileSidebarOpen, setIsMobileSidebarOpen } = useApp();
+  const { tasks, clients, projects, updateSubtask, isMobileSidebarOpen, setIsMobileSidebarOpen, isFree } = useApp();
   const [showModal, setShowModal]           = useState(false);
   const [editingTask, setEditingTask]       = useState(null);
   const [editingSubtask, setEditingSubtask] = useState(null); // { task, subtask }
@@ -355,6 +356,13 @@ const Sidebar = () => {
   const [collapsed, setCollapsed]           = useState(false);
   const [showClientPanel, setShowClientPanel] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
+  const [search, setSearch]                 = useState('');
+  const [filterClientId, setFilterClientId] = useState('');
+  const [filterProjectId, setFilterProjectId] = useState('');
+  const [filterAllDay, setFilterAllDay]     = useState(false);
+  const [openDropdown, setOpenDropdown]     = useState(null); // 'client' | 'project' | null
+  const [showUpgradeFilters, setShowUpgradeFilters] = useState(false);
+  const dropdownRef = useRef(null);
 
   const toggleSelect = useCallback((taskId) => {
     setSelectedTaskIds(prev => {
@@ -378,11 +386,34 @@ const Sidebar = () => {
     }
   }, [editingSubtask]);
 
+  // Proyectos del cliente seleccionado en el filtro Pro
+  const filterProjects = useMemo(() =>
+    filterClientId ? projects.filter(p => p.clientId === filterClientId) : projects
+  , [projects, filterClientId])
+
+  const selectedClient  = useMemo(() => clients.find(c => c.id === filterClientId),  [clients, filterClientId])
+  const selectedProject = useMemo(() => projects.find(p => p.id === filterProjectId), [projects, filterProjectId])
+  const hasActiveFilters = !isFree && (search || filterClientId || filterProjectId || filterAllDay)
+
+  // Cerrar dropdown al hacer clic fuera
+  useEffect(() => {
+    if (!openDropdown) return
+    const handler = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpenDropdown(null) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [openDropdown])
+
   const filtered = useMemo(() => tasks.filter(t => {
-    if (filter === 'pending') return t.status !== 'done';
-    if (filter === 'done')    return t.status === 'done';
+    if (filter === 'pending' && t.status === 'done') return false;
+    if (filter === 'done'    && t.status !== 'done') return false;
+    if (!isFree) {
+      if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
+      if (filterClientId  && t.clientId  !== filterClientId)  return false;
+      if (filterProjectId && t.projectId !== filterProjectId) return false;
+      if (filterAllDay    && !t.isAllDay) return false;
+    }
     return true;
-  }), [tasks, filter]);
+  }), [tasks, filter, search, filterClientId, filterProjectId, filterAllDay, isFree]);
 
   // Touch Swipes para cerrar y abrir Sidebar
   const [touchX, setTouchX] = useState(null);
@@ -449,6 +480,133 @@ const Sidebar = () => {
           </div>
           <div className="divider" style={{ margin:'4px 0' }}/>
 
+          {/* ── Filtros avanzados (Pro) ──────────────────────────────────── */}
+          {isFree ? (
+            <button onClick={() => setShowUpgradeFilters(true)} style={{
+              display:'flex', alignItems:'center', gap:6, margin:'0 12px 6px',
+              padding:'7px 10px', borderRadius:'var(--radius-sm)', border:'1px dashed var(--border-subtle)',
+              background:'transparent', cursor:'pointer', width:'calc(100% - 24px)',
+            }}>
+              <Search size={11} style={{ color:'var(--text-tertiary)', flexShrink:0 }}/>
+              <span style={{ fontSize:11, color:'var(--text-tertiary)' }}>Buscar y filtrar…</span>
+              <span style={{ marginLeft:'auto', fontSize:9, fontWeight:700, color:'var(--accent-amber)', background:'rgba(245,158,11,0.12)', padding:'2px 5px', borderRadius:4, letterSpacing:'0.04em' }}>PRO</span>
+            </button>
+          ) : (
+            <div style={{ padding:'0 12px 6px', display:'flex', flexDirection:'column', gap:5 }} ref={dropdownRef}>
+
+              {/* Fila: buscador + iconos de filtro */}
+              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+
+                {/* Buscador */}
+                <div style={{ position:'relative', flex:1 }}>
+                  <Search size={11} style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', color:'var(--text-tertiary)', pointerEvents:'none' }}/>
+                  <input className="input" placeholder="Buscar…" value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    style={{ paddingLeft:25, paddingRight: search ? 24 : 8, fontSize:12, height:28 }}/>
+                  {search && (
+                    <button onClick={() => setSearch('')} style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text-tertiary)', display:'flex', padding:0 }}>
+                      <X size={10}/>
+                    </button>
+                  )}
+                </div>
+
+                {/* Icono: Cliente */}
+                <div style={{ position:'relative' }}>
+                  <button
+                    title={filterClientId ? `Cliente: ${selectedClient?.name}` : 'Filtrar por cliente'}
+                    onClick={() => setOpenDropdown(o => o === 'client' ? null : 'client')}
+                    style={{
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      width:28, height:28, borderRadius:'var(--radius-xs)', border:'1px solid',
+                      cursor:'pointer', transition:'all .15s', flexShrink:0,
+                      borderColor: filterClientId ? selectedClient?.color : 'var(--border-subtle)',
+                      background:  filterClientId ? (selectedClient?.color + '18') : 'transparent',
+                      color:       filterClientId ? selectedClient?.color : 'var(--text-tertiary)',
+                    }}>
+                    <Building2 size={13}/>
+                  </button>
+                  {openDropdown === 'client' && (
+                    <div style={{ position:'absolute', top:'calc(100% + 4px)', right:0, minWidth:160, maxHeight:180, overflowY:'auto',
+                      background:'var(--bg-secondary)', border:'1px solid var(--border-default)', borderRadius:'var(--radius-md)',
+                      boxShadow:'0 4px 16px rgba(0,0,0,0.18)', zIndex:200, padding:4 }}>
+                      <button onClick={() => { setFilterClientId(''); setFilterProjectId(''); setOpenDropdown(null) }}
+                        style={{ display:'flex', alignItems:'center', gap:7, width:'100%', padding:'6px 10px', borderRadius:'var(--radius-xs)', border:'none', background: !filterClientId ? 'var(--surface-2)' : 'transparent', cursor:'pointer', fontSize:12, color:'var(--text-secondary)' }}>
+                        <span style={{ width:8, height:8, borderRadius:'50%', background:'var(--border-default)', flexShrink:0 }}/>
+                        Todos
+                      </button>
+                      {clients.map(c => (
+                        <button key={c.id} onClick={() => { setFilterClientId(c.id); setFilterProjectId(''); setOpenDropdown(null) }}
+                          style={{ display:'flex', alignItems:'center', gap:7, width:'100%', padding:'6px 10px', borderRadius:'var(--radius-xs)', border:'none', background: filterClientId === c.id ? 'var(--surface-2)' : 'transparent', cursor:'pointer', fontSize:12, color:'var(--text-primary)', fontWeight: filterClientId === c.id ? 600 : 400 }}>
+                          <span style={{ width:8, height:8, borderRadius:'50%', background:c.color, flexShrink:0 }}/>
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Icono: Proyecto */}
+                <div style={{ position:'relative' }}>
+                  <button
+                    title={!filterClientId ? 'Selecciona un cliente primero' : filterProjectId ? `Proyecto: ${selectedProject?.name}` : 'Filtrar por proyecto'}
+                    disabled={!filterClientId}
+                    onClick={() => setOpenDropdown(o => o === 'project' ? null : 'project')}
+                    style={{
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      width:28, height:28, borderRadius:'var(--radius-xs)', border:'1px solid',
+                      cursor: filterClientId ? 'pointer' : 'not-allowed', transition:'all .15s', flexShrink:0, opacity: filterClientId ? 1 : 0.35,
+                      borderColor: filterProjectId ? selectedProject?.color : 'var(--border-subtle)',
+                      background:  filterProjectId ? (selectedProject?.color + '18') : 'transparent',
+                      color:       filterProjectId ? selectedProject?.color : 'var(--text-tertiary)',
+                    }}>
+                    <Folder size={13}/>
+                  </button>
+                  {openDropdown === 'project' && filterClientId && (
+                    <div style={{ position:'absolute', top:'calc(100% + 4px)', right:0, minWidth:160, maxHeight:180, overflowY:'auto',
+                      background:'var(--bg-secondary)', border:'1px solid var(--border-default)', borderRadius:'var(--radius-md)',
+                      boxShadow:'0 4px 16px rgba(0,0,0,0.18)', zIndex:200, padding:4 }}>
+                      <button onClick={() => { setFilterProjectId(''); setOpenDropdown(null) }}
+                        style={{ display:'flex', alignItems:'center', gap:7, width:'100%', padding:'6px 10px', borderRadius:'var(--radius-xs)', border:'none', background: !filterProjectId ? 'var(--surface-2)' : 'transparent', cursor:'pointer', fontSize:12, color:'var(--text-secondary)' }}>
+                        <span style={{ width:8, height:8, borderRadius:'50%', background:'var(--border-default)', flexShrink:0 }}/>
+                        Todos
+                      </button>
+                      {filterProjects.map(p => (
+                        <button key={p.id} onClick={() => { setFilterProjectId(p.id); setOpenDropdown(null) }}
+                          style={{ display:'flex', alignItems:'center', gap:7, width:'100%', padding:'6px 10px', borderRadius:'var(--radius-xs)', border:'none', background: filterProjectId === p.id ? 'var(--surface-2)' : 'transparent', cursor:'pointer', fontSize:12, color:'var(--text-primary)', fontWeight: filterProjectId === p.id ? 600 : 400 }}>
+                          <span style={{ width:8, height:8, borderRadius:'50%', background:p.color, flexShrink:0 }}/>
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Icono: Todo el día */}
+                <button
+                  title={filterAllDay ? 'Mostrando solo tareas de todo el día' : 'Filtrar tareas de todo el día'}
+                  onClick={() => setFilterAllDay(f => !f)}
+                  style={{
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    width:28, height:28, borderRadius:'var(--radius-xs)', border:'1px solid', cursor:'pointer', transition:'all .15s', flexShrink:0,
+                    borderColor: filterAllDay ? 'var(--accent-blue)' : 'var(--border-subtle)',
+                    background:  filterAllDay ? 'rgba(59,130,246,0.12)' : 'transparent',
+                    color:       filterAllDay ? 'var(--accent-blue)' : 'var(--text-tertiary)',
+                  }}>
+                  <CalendarDays size={13}/>
+                </button>
+
+                {/* Limpiar todos */}
+                {hasActiveFilters && (
+                  <button title="Limpiar filtros"
+                    onClick={() => { setSearch(''); setFilterClientId(''); setFilterProjectId(''); setFilterAllDay(false) }}
+                    style={{ display:'flex', alignItems:'center', justifyContent:'center', width:24, height:28, border:'none', background:'none', cursor:'pointer', color:'var(--text-tertiary)', flexShrink:0, borderRadius:'var(--radius-xs)' }}>
+                    <X size={11}/>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {selectedTaskIds.size > 0 ? (
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
               padding:'5px 12px', background:'var(--surface-2)', borderBottom:'1px solid var(--border-subtle)',
@@ -499,6 +657,7 @@ const Sidebar = () => {
 
     {/* Panel Clientes y Proyectos */}
     {showClientPanel && <SettingsPanel onClose={() => setShowClientPanel(false)}/>}
+    <UpgradeModal reason={showUpgradeFilters ? 'filters' : null} onClose={() => setShowUpgradeFilters(false)} />
 
     {/* Subtarea Edit Modal */}
     {editingSubtask && (

@@ -2,9 +2,11 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { startOfMonth, endOfMonth, subMonths, addMonths, format } from 'date-fns'
 import { useAuth } from './AuthContext'
 import { usePlan } from '../hooks/usePlan'
+import { useGoogleCalendar } from '../hooks/useGoogleCalendar'
 import * as db from '../lib/db'
 import { toCamel, normalizeEntry } from '../lib/db'
 import { supabase } from '../lib/supabase'
+import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent, refreshGoogleToken } from '../utils/googleCalendar'
 
 const AppContext = createContext()
 export const useApp = () => useContext(AppContext)
@@ -19,6 +21,7 @@ export const AppProvider = ({ children }) => {
   const { user } = useAuth()
   const userId = user?.id
   const { plan, isFree } = usePlan()
+  const gcal = useGoogleCalendar()
 
   // ── Tema (local por dispositivo) ──────────────────────────────────────────
   const [theme, setTheme] = useState(() => load('ct_theme', 'dark'))
@@ -208,10 +211,19 @@ export const AppProvider = ({ children }) => {
   }
 
   const removeTask = async (id) => {
-    await db.entries.deleteByTaskId(id)
-    await db.tasks.delete(id)
+    // Eliminación optimista — la UI responde de inmediato
+    const prevTasks   = tasks
+    const prevEntries = entries
     setTasks(p => p.filter(t => t.id !== id))
     setEntries(p => p.filter(e => e.taskId !== id))
+    try {
+      await db.entries.deleteByTaskId(id)
+      await db.tasks.delete(id)
+    } catch (err) {
+      console.error('Error eliminando tarea, revirtiendo:', err)
+      setTasks(prevTasks)
+      setEntries(prevEntries)
+    }
   }
 
   // ── SUBTAREAS ─────────────────────────────────────────────────────────────
@@ -269,9 +281,39 @@ export const AppProvider = ({ children }) => {
     }))
   }
 
+  // ── Helper para llamadas a Google con retry en 401 ────────────────────────
+  const withGcalRetry = async (fn) => {
+    try {
+      return await fn()
+    } catch (err) {
+      if (err?.status === 401) {
+        const newToken = await refreshGoogleToken(userId)
+        if (newToken) return await fn(newToken)
+      }
+      // Silencioso: nunca romper la app si Google falla
+      console.error('[GCal] operación falló (silenciosa):', err)
+      return null
+    }
+  }
+
   // ── ENTRADAS DE TIEMPO ────────────────────────────────────────────────────
   const addEntry = async (data) => {
     const e = await db.entries.create({ ...data, userId })
+
+    // Sincronizar con Google Calendar si corresponde
+    if (gcal.isConnected && gcal.syncToGoogle && e.startTime && e.endTime) {
+      const token = await gcal.getAccessToken()
+      if (token) {
+        const title = data.title || ''
+        const googleEventId = await withGcalRetry((t = token) =>
+          createGoogleEvent(t, { ...e, title })
+        )
+        if (googleEventId) {
+          const updated = await db.entries.update(e.id, { googleEventId })
+          return updated
+        }
+      }
+    }
     return e
   }
 
@@ -281,6 +323,17 @@ export const AppProvider = ({ children }) => {
     try {
       const confirmed = await db.entries.update(id, updates)
       setEntries(prev => prev.map(x => x.id === id ? confirmed : x))
+
+      // Sincronizar cambios con Google Calendar si el evento ya existe en Google
+      if (confirmed.googleEventId && gcal.isConnected) {
+        const token = await gcal.getAccessToken()
+        if (token) {
+          const title = confirmed.title || ''
+          await withGcalRetry((t = token) =>
+            updateGoogleEvent(t, confirmed.googleEventId, { ...confirmed, title })
+          )
+        }
+      }
     } catch (err) {
       console.error('Error actualizando entry, revirtiendo:', err)
       setEntries(previousEntries)
@@ -288,8 +341,19 @@ export const AppProvider = ({ children }) => {
   }
 
   const removeEntry = async (id) => {
+    const entry = entries.find(e => e.id === id)
     await db.entries.delete(id)
     setEntries(p => p.filter(e => e.id !== id))
+
+    // Eliminar de Google Calendar si existe referencia
+    if (entry?.googleEventId && gcal.isConnected) {
+      const token = await gcal.getAccessToken()
+      if (token) {
+        await withGcalRetry((t = token) =>
+          deleteGoogleEvent(t, entry.googleEventId)
+        )
+      }
+    }
   }
 
   // ── Helpers de consulta (sin cambios de API) ──────────────────────────────
@@ -346,6 +410,8 @@ export const AppProvider = ({ children }) => {
       entries, addEntry, updateEntry, removeEntry,
       getEntriesByDay, getDailySummary,
       getClient, getProject, getTask, getProjectsByClient, getEntryColor,
+      // Google Calendar
+      gcal,
     }}>
       {children}
     </AppContext.Provider>

@@ -41,7 +41,7 @@ export default function AuthScreen() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <h1 className="auth-title">Time Tracker</h1>
+        <img src="/logo_dark.png" alt="Kron" style={{ height: 25, width: 'auto', marginBottom: 4 }} />
         <p className="auth-subtitle">
           {mode === 'login' ? 'Inicia sesión para continuar' : 'Crea tu cuenta'}
         </p>

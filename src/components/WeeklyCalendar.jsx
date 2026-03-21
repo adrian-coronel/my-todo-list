@@ -283,6 +283,109 @@ const EventBlock = React.memo(({ entry, colWidth, weekDays, pxPerHour, onContext
 });
 
 /* ════════════════════════════════════════════════════════════════════════════
+   GoogleEventBlock — bloque de solo lectura para eventos de Google Calendar
+════════════════════════════════════════════════════════════════════════════ */
+const GCAL_ICON = (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+    <path d="M6 2v4M18 2v4M2 9h20M4 4h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+)
+
+const GoogleEventBlock = React.memo(({ event, colWidth, weekDays, pxPerHour }) => {
+  const [tooltip, setTooltip] = useState(null)
+
+  const dateStr = event.start.dateTime.slice(0, 10)
+  const startTime = event.start.dateTime.slice(11, 16)
+  const endTime   = event.end?.dateTime?.slice(11, 16) || startTime
+
+  const dayDiff = weekDays.findIndex(d => format(d, 'yyyy-MM-dd') === dateStr)
+  if (dayDiff === -1) return null
+
+  const y0     = timeToY(startTime, pxPerHour)
+  const y1     = timeToY(endTime,   pxPerHour)
+  const blockH = Math.max(y1 - y0, pxPerHour / 4)
+
+  return (
+    <div
+      style={{
+        position:  'absolute',
+        left:      dayDiff * colWidth + 2,
+        top:       HEADER_H + y0,
+        width:     colWidth - 4,
+        height:    blockH,
+        zIndex:    9,
+        boxSizing: 'border-box',
+        pointerEvents: 'all',
+      }}
+      onClick={e => {
+        e.stopPropagation()
+        setTooltip(t => t ? null : { x: e.clientX, y: e.clientY })
+      }}
+    >
+      <div style={{
+        height:       '100%',
+        background:   'rgba(66, 133, 244, 0.18)',
+        border:       '1px solid rgba(66, 133, 244, 0.45)',
+        borderRadius: 'var(--radius-sm)',
+        padding:      '2px 5px',
+        overflow:     'hidden',
+        cursor:       'pointer',
+        display:      'flex',
+        flexDirection:'column',
+        gap:          2,
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:3, minWidth:0 }}>
+          {GCAL_ICON}
+          <span style={{ fontSize:11, fontWeight:600, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {event.summary || '(sin título)'}
+          </span>
+        </div>
+        {blockH > pxPerHour / 2 && (
+          <div style={{ fontSize:10, color:'var(--text-secondary)', opacity:0.8 }}>
+            {startTime}–{endTime}
+          </div>
+        )}
+      </div>
+
+      {/* Tooltip */}
+      {tooltip && (
+        <>
+          <div
+            style={{ position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:200 }}
+            onClick={e => { e.stopPropagation(); setTooltip(null) }}
+          />
+          <div style={{
+            position:   'fixed',
+            left:       Math.min(tooltip.x + 8, window.innerWidth - 220),
+            top:        Math.min(tooltip.y + 8, window.innerHeight - 120),
+            zIndex:     201,
+            background: 'var(--bg-tertiary)',
+            border:     '1px solid var(--border-default)',
+            borderRadius:'var(--radius-md)',
+            padding:    '10px 12px',
+            width:      210,
+            boxShadow:  '0 4px 16px rgba(0,0,0,0.25)',
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:6 }}>
+              {GCAL_ICON}
+              <span style={{ fontSize:12, fontWeight:600, color:'var(--text-primary)' }}>
+                {event.summary || '(sin título)'}
+              </span>
+            </div>
+            <div style={{ fontSize:11, color:'var(--text-secondary)', marginBottom:4 }}>
+              {startTime} – {endTime}
+            </div>
+            <div style={{ fontSize:10, color:'var(--accent-blue)', fontStyle:'italic' }}>
+              Evento de Google Calendar
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+})
+
+/* ════════════════════════════════════════════════════════════════════════════
    Vista Mensual
 ════════════════════════════════════════════════════════════════════════════ */
 const MonthView = ({ currentDate, entries, tasks, onDayClick }) => {
@@ -459,7 +562,7 @@ const DayView = ({ currentDate, entries, tasks, pxPerHour, onContextMenu, onOpen
    Calendario Principal
 ════════════════════════════════════════════════════════════════════════════ */
 const WeeklyCalendar = () => {
-  const { entries, addEntry, updateEntry, tasks, getEntryColor } = useApp();
+  const { entries, addEntry, updateEntry, tasks, getEntryColor, gcal } = useApp();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView]               = useState('week');
   const [summaryDate, setSummaryDate] = useState(null);
@@ -491,6 +594,18 @@ const WeeklyCalendar = () => {
   const endDate   = useMemo(() => addDays(startDate, 6), [startDate]);
   const weekDays  = useMemo(() => Array.from({length:7}).map((_,i) => addDays(startDate,i)), [startDate]);
   const todayStr  = format(new Date(), 'yyyy-MM-dd');
+
+  // Cargar eventos de Google al cambiar semana/día/mes
+  useEffect(() => {
+    if (!gcal?.isConnected || !gcal?.showGoogleEvents) return
+    const from = view === 'week' ? format(startDate,'yyyy-MM-dd')
+      : view === 'day'  ? format(currentDate,'yyyy-MM-dd')
+      : format(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1), 'yyyy-MM-dd')
+    const to = view === 'week' ? format(endDate,'yyyy-MM-dd')
+      : view === 'day'  ? format(currentDate,'yyyy-MM-dd')
+      : format(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0), 'yyyy-MM-dd')
+    gcal.loadGoogleEvents(from, to)
+  }, [view, startDate, endDate, currentDate, gcal?.isConnected, gcal?.showGoogleEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll inicial
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 8 * pxPerHour; }, []);
@@ -944,6 +1059,22 @@ const WeeklyCalendar = () => {
 
             {/* Capa de eventos (solo con hora — las tareas del día van arriba) */}
             <div style={{ position:'absolute', top:0, left:0, right:0, height:HEADER_H+24*pxPerHour, zIndex:10, pointerEvents:'none' }}>
+              {/* Eventos de Google Calendar (solo lectura) */}
+              {gcal?.showGoogleEvents && gcal?.googleEvents
+                .filter(e => {
+                  const ds = e.start.dateTime.slice(0,10)
+                  return ds >= format(startDate,'yyyy-MM-dd') && ds <= format(endDate,'yyyy-MM-dd')
+                })
+                .map(e => (
+                  <GoogleEventBlock
+                    key={e.id}
+                    event={e}
+                    colWidth={colWidth}
+                    weekDays={weekDays}
+                    pxPerHour={pxPerHour}
+                  />
+                ))
+              }
               {weekTimedEntries.map(e => (
                 <div key={e.id} style={{ pointerEvents:'all' }}>
                   <EventBlock

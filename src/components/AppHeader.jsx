@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Sun, Moon, SunMedium, X, Plus, Trash2, Menu, LogOut, FileBarChart, Sparkles } from 'lucide-react';
 import UpgradeModal from './UpgradeModal';
 import ReportModal from './ReportModal';
+import GoogleCalendarSettings from './GoogleCalendarSettings';
 
 const PREDEFINED_COLORS = [
   '#ef4444', '#f87171', '#dc2626', '#f97316', '#fb923c', '#ea580c',
@@ -147,6 +148,9 @@ export const SettingsPanel = ({ onClose }) => {
               })}
             </div>
           )}
+
+          <div className="divider"/>
+          <GoogleCalendarSettings />
         </div>
       </div>
 
@@ -188,6 +192,7 @@ const AppHeader = () => {
   const { signOut } = useAuth();
   const [showReport, setShowReport] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState(null);
+  const logoSrc = theme === 'dark' ? '/logo_dark.png' : '/logo_whie_middle.png';
 
   return (
     <header className="app-header">
@@ -195,10 +200,7 @@ const AppHeader = () => {
         <button className="btn btn-ghost btn-icon mobile-only" onClick={() => setIsMobileSidebarOpen(true)}>
           <Menu size={18}/>
         </button>
-        <span className="app-header-title" style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:'var(--text-primary)', display:'flex', alignItems:'center', gap: '8px' }}>
-          <img src="/logo.png" alt="Logo" style={{ width:24, height:24, borderRadius:4 }} />
-          Interstellar<span style={{ color:'var(--accent-blue)', marginLeft:'3px' }}>Mare</span>
-        </span>
+        <img src={logoSrc} alt="Kron" style={{ height: 25, width: 'auto' }} />
       </div>
 
       <div className="flex-row gap-2">

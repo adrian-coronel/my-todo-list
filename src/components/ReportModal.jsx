@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { X, FileDown, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -28,6 +28,12 @@ const fmtMoney = (n) => n != null ? `$${n.toLocaleString('en-US', { minimumFract
 
 export default function ReportModal({ onClose }) {
   const { clients, projects, entries } = useApp()
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
 
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id ?? '')
   const [rangeType, setRangeType] = useState('week') // 'week' | 'month'

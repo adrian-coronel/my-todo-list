@@ -7,6 +7,7 @@ const MESSAGES = {
   reports:      'Los reportes de tiempo son una funcionalidad Pro.',
   pdf:          'La exportación a PDF es una funcionalidad Pro.',
   integrations: 'Las integraciones de calendario son una funcionalidad Pro.',
+  filters:      'La búsqueda y filtros avanzados de tareas son una funcionalidad Pro.',
 }
 
 export default function UpgradeModal({ reason, onClose }) {

@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'favicon.svg', 'favicon.png', 'apple-touch-icon-180x180.png'],
       manifest: {
-        name: 'My Todo List',
-        short_name: 'TodoList',
+        name: 'Kron',
+        short_name: 'Kron',
         description: 'Calendar-based time tracking app',
         theme_color: '#1a1a2e',
         background_color: '#0f0f1a',
