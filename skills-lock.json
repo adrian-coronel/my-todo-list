@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "beforemerge-fullstack-architecture-review": {
+      "source": "BeforeMerge/beforemerge-skills",
+      "sourceType": "github",
+      "computedHash": "f24b337e2fbb2cd3b31ea6f3a3dc20ccf7ef6838e99b2a41bce79bb7d821fbb6"
+    },
+    "beforemerge-react-review": {
+      "source": "BeforeMerge/beforemerge-skills",
+      "sourceType": "github",
+      "computedHash": "dea0cd5f25598220d1b755b1ab2e9385fea310b178feda91cf78a4ec54d239ba"
+    },
+    "beforemerge-supabase-review": {
+      "source": "BeforeMerge/beforemerge-skills",
+      "sourceType": "github",
+      "computedHash": "4fdf77601de50490ff48c4ec1882df0e2a4e42fe199e262dcb1630b207882a8d"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "computedHash": "e3ba3d760c5f4cc43b02a91fb8924f726c7818f95cc35d79d0a606ca622b72f5"
+    }
+  }
+}

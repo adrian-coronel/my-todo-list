@@ -26,18 +26,38 @@ const DailySummaryModal = ({ dateStr, onClose }) => {
     lines.push(`📅 Resumen del ${dateLabel}`);
     lines.push(`⏱ Total trabajado: ${fmt(totalMinutes)}`);
     lines.push('');
-    summary.forEach((g, i) => {
-      const task = g.task;
+
+    summary.forEach((g) => {
+      const task   = g.task;
       const client = g.client;
       const project = g.project;
-      lines.push(`${i+1}. ${task?.title || 'Sin tarea'} — ${fmt(g.totalMinutes)}`);
-      if (client || project) lines.push(`   ${client?.name || ''}${project ? ` › ${project.name}` : ''}`);
+
+      const context = [client?.name, project?.name].filter(Boolean).join(' › ');
+      const contextStr = context ? ` (${context})` : '';
+      lines.push(`• ${task?.title || 'Sin tarea'} — ${fmt(g.totalMinutes)}${contextStr}`);
+
+      // Calcular tiempo por subtarea a partir de los entries que tienen subtaskId
+      const subtaskMinutes = {};
       g.entries.forEach(e => {
-        const note = e.notes ? ` — ${e.notes}` : '';
-        lines.push(`   • ${e.startTime}–${e.endTime}${note}`);
+        if (!e.subtaskId || !e.startTime || !e.endTime) return;
+        const [sh, sm] = e.startTime.split(':').map(Number);
+        const [eh, em] = e.endTime.split(':').map(Number);
+        let diff = (eh * 60 + em) - (sh * 60 + sm);
+        if (diff < 0) diff += 24 * 60;
+        subtaskMinutes[e.subtaskId] = (subtaskMinutes[e.subtaskId] || 0) + diff;
       });
+
+      const doneSubtasks = (task?.subtasks || []).filter(st => st.done);
+      doneSubtasks.forEach(st => {
+        const mins = subtaskMinutes[st.id];
+        const timeStr = mins ? ` (${fmt(mins)})` : '';
+        lines.push(`   • ${st.title}${timeStr}`);
+      });
+
+      if (task?.description) lines.push(`   ${task.description}`);
       lines.push('');
     });
+
     navigator.clipboard.writeText(lines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

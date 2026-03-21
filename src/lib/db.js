@@ -235,6 +235,19 @@ export const entries = {
     return data.map(normalizeEntry)
   },
 
+  async listByRange(from, to) {
+    const data = await query(
+      supabase
+        .from('entries')
+        .select('*')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date')
+        .order('start_time')
+    )
+    return data.map(normalizeEntry)
+  },
+
   async create({ taskId, clientId, projectId, subtaskId, date, startTime, endTime, notes = '', isSubtask = false, isAllDay = false, userId }) {
     const data = await query(
       supabase

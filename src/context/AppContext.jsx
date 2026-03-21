@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { startOfMonth, endOfMonth, subMonths, addMonths, format } from 'date-fns'
 import { useAuth } from './AuthContext'
 import * as db from '../lib/db'
 import { toCamel, normalizeEntry } from '../lib/db'
@@ -32,12 +33,15 @@ export const AppProvider = ({ children }) => {
   const loadAll = useCallback(async () => {
     if (!userId) return
     setDataLoading(true)
+    const today = new Date()
+    const from = format(subMonths(startOfMonth(today), 1), 'yyyy-MM-dd')
+    const to   = format(addMonths(endOfMonth(today), 1),  'yyyy-MM-dd')
     try {
       const [c, p, t, e] = await Promise.all([
         db.clients.list(),
         db.projects.list(),
         db.tasks.list(),
-        db.entries.list(),
+        db.entries.listByRange(from, to),
       ])
       setClients(c)
       setProjects(p)
@@ -79,12 +83,33 @@ export const AppProvider = ({ children }) => {
         applyDelta(setClients, toCamel))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' },
         applyDelta(setProjects, toCamel))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-        // Tasks contienen subtareas embebidas — requiere full reload para ensamblarlas
-        db.tasks.list().then(setTasks).catch(console.error)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        const { eventType, new: rec, old } = payload
+        if (eventType === 'INSERT') {
+          setTasks(prev => [...prev, { ...toCamel(rec), subtasks: [] }])
+        } else if (eventType === 'UPDATE') {
+          // Preservar subtareas del estado local — el payload no las incluye
+          setTasks(prev => prev.map(t => t.id === rec.id ? { ...toCamel(rec), subtasks: t.subtasks || [] } : t))
+        } else if (eventType === 'DELETE') {
+          setTasks(prev => prev.filter(t => t.id !== old.id))
+        }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'subtasks' }, () => {
-        db.tasks.list().then(setTasks).catch(console.error)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'subtasks' }, (payload) => {
+        const { eventType, new: rec, old } = payload
+        if (eventType === 'INSERT') {
+          setTasks(prev => prev.map(t =>
+            t.id === rec.task_id ? { ...t, subtasks: [...(t.subtasks || []), toCamel(rec)] } : t
+          ))
+        } else if (eventType === 'UPDATE') {
+          setTasks(prev => prev.map(t =>
+            t.id === rec.task_id
+              ? { ...t, subtasks: (t.subtasks || []).map(st => st.id === rec.id ? toCamel(rec) : st) }
+              : t
+          ))
+        } else if (eventType === 'DELETE') {
+          // old.task_id puede ser undefined sin REPLICA IDENTITY FULL — scan por id
+          setTasks(prev => prev.map(t => ({ ...t, subtasks: (t.subtasks || []).filter(st => st.id !== old.id) })))
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' },
         applyDelta(setEntries, normalizeEntry))
@@ -96,7 +121,6 @@ export const AppProvider = ({ children }) => {
   // ── CLIENTES ──────────────────────────────────────────────────────────────
   const addClient = async (name, color = '#3B82F6') => {
     const c = await db.clients.create({ name, color, userId })
-    setClients(p => [...p, c])
     return c
   }
 
@@ -114,7 +138,6 @@ export const AppProvider = ({ children }) => {
   // ── PROYECTOS ─────────────────────────────────────────────────────────────
   const addProject = async (clientId, name, color = '#6366F1') => {
     const p = await db.projects.create({ clientId, name, color, userId })
-    setProjects(prev => [...prev, p])
     return p
   }
 
@@ -136,23 +159,42 @@ export const AppProvider = ({ children }) => {
   }
 
   const updateTask = async (id, updates) => {
-    // Sincronizar subtareas al completar/descompletar tarea manualmente
     const task = tasks.find(t => t.id === id)
+    const previousTasks = tasks
+
+    // Calcular estado optimista de subtareas si cambia el status
+    let optimisticSubtasks = task?.subtasks
     if (task) {
       if (updates.status === 'done' && task.status !== 'done') {
-        // Marcar todas las subtareas como done en DB
-        await Promise.all(
-          (task.subtasks || []).filter(st => !st.done).map(st => db.subtasks.toggle(st.id, true))
-        )
+        optimisticSubtasks = (task.subtasks || []).map(st => ({ ...st, done: true }))
       } else if (updates.status === 'pending' && task.status === 'done') {
-        // Revertir todas las subtareas
-        await Promise.all(
-          (task.subtasks || []).filter(st => st.done).map(st => db.subtasks.toggle(st.id, false))
-        )
+        optimisticSubtasks = (task.subtasks || []).map(st => ({ ...st, done: false }))
       }
     }
-    const t = await db.tasks.update(id, updates)
-    setTasks(p => p.map(x => x.id === id ? t : x))
+
+    setTasks(prev => prev.map(t =>
+      t.id === id ? { ...t, ...updates, subtasks: optimisticSubtasks ?? t.subtasks } : t
+    ))
+
+    try {
+      // Sincronizar subtareas en DB si corresponde
+      if (task) {
+        if (updates.status === 'done' && task.status !== 'done') {
+          await Promise.all(
+            (task.subtasks || []).filter(st => !st.done).map(st => db.subtasks.toggle(st.id, true))
+          )
+        } else if (updates.status === 'pending' && task.status === 'done') {
+          await Promise.all(
+            (task.subtasks || []).filter(st => st.done).map(st => db.subtasks.toggle(st.id, false))
+          )
+        }
+      }
+      const confirmed = await db.tasks.update(id, updates)
+      setTasks(prev => prev.map(t => t.id === id ? confirmed : t))
+    } catch (err) {
+      console.error('Error actualizando task, revirtiendo:', err)
+      setTasks(previousTasks)
+    }
   }
 
   const removeTask = async (id) => {
@@ -186,7 +228,7 @@ export const AppProvider = ({ children }) => {
     if (!subtask) return
 
     const newDone = !subtask.done
-    await db.subtasks.toggle(subtaskId, newDone)
+    const previousTasks = tasks
 
     const newSubtasks = (task.subtasks || []).map(st =>
       st.id === subtaskId ? { ...st, done: newDone } : st
@@ -194,13 +236,19 @@ export const AppProvider = ({ children }) => {
     const allDone = newSubtasks.length > 0 && newSubtasks.every(st => st.done)
     const newStatus = allDone ? 'done' : (task.status === 'done' ? 'pending' : task.status)
 
-    if (newStatus !== task.status) {
-      await db.tasks.update(taskId, { status: newStatus })
-    }
-
     setTasks(p => p.map(t =>
       t.id === taskId ? { ...t, subtasks: newSubtasks, status: newStatus } : t
     ))
+
+    try {
+      await db.subtasks.toggle(subtaskId, newDone)
+      if (newStatus !== task.status) {
+        await db.tasks.update(taskId, { status: newStatus })
+      }
+    } catch (err) {
+      console.error('Error en toggleSubtask, revirtiendo:', err)
+      setTasks(previousTasks)
+    }
   }
 
   const removeSubtask = async (taskId, subtaskId) => {
@@ -214,13 +262,19 @@ export const AppProvider = ({ children }) => {
   // ── ENTRADAS DE TIEMPO ────────────────────────────────────────────────────
   const addEntry = async (data) => {
     const e = await db.entries.create({ ...data, userId })
-    setEntries(p => [...p, e])
     return e
   }
 
   const updateEntry = async (id, updates) => {
-    const e = await db.entries.update(id, updates)
-    setEntries(p => p.map(x => x.id === id ? e : x))
+    const previousEntries = entries
+    setEntries(prev => prev.map(x => x.id === id ? { ...x, ...updates } : x))
+    try {
+      const confirmed = await db.entries.update(id, updates)
+      setEntries(prev => prev.map(x => x.id === id ? confirmed : x))
+    } catch (err) {
+      console.error('Error actualizando entry, revirtiendo:', err)
+      setEntries(previousEntries)
+    }
   }
 
   const removeEntry = async (id) => {
